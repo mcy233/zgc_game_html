@@ -7,6 +7,8 @@ on:
     branches:
       - main
       - master
+  # Pages 首次在 Settings 里改为「GitHub Actions」后，可对失败记录点 Re-run；也可用此入口手动部署
+  workflow_dispatch:
 
 permissions:
   contents: read
