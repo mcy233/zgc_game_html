@@ -64,6 +64,10 @@ export interface GameState {
   season: '秋季' | '冬季' | '春季' | '夏季';
   /** 玩家角色中文姓名，开局随机生成并随存档保留 */
   playerName: string;
+  /** 与姓名对应的学院邮箱（整址，开局固定） */
+  playerContactEmail: string;
+  /** 工位展示文案，开局随机（楼栋 C5/C8/C9，楼层 1–4） */
+  playerOfficeRoom: string;
   /** 已解锁的个人主页称号 id（见 profileHonors） */
   unlockedHonors: string[];
   /** 研究兴趣文案组索引 0..4，开局随机，本局固定 */

@@ -9,6 +9,8 @@ export const INITIAL_STATE: GameState = {
   year: 1,
   season: '秋季',
   playerName: '',
+  playerContactEmail: '',
+  playerOfficeRoom: '',
   unlockedHonors: [],
   researchInterestGroup: 0,
   sanity: 80,

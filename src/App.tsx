@@ -68,7 +68,7 @@ import { POTENTIAL_ADVISOR_VISIT_OUTCOMES } from './advisorVisitContent';
 import { pickLeaveLine, pickJoinLine, applySeniorFarewellGifts } from './labTurnover';
 import { generateAdvisorFeedback, generateRandomEvent, generateMomentContent, generateExternalMoment } from './services/geminiService';
 import { buildStudentProfile } from './studentProfileContent';
-import { generateRandomPlayerName } from './playerName';
+import { generatePlayerRunIdentity } from './playerName';
 import { scanNewHonorIds, PROFILE_HONOR_BY_ID } from './profileHonors';
 import { RESEARCH_INTEREST_GROUP_COUNT } from './researchInterestGroups';
 import { AssetThumb, AvatarThumb, advisorAvatarKey, labAvatarKey } from './SpriteThumbs';
@@ -364,11 +364,16 @@ function computePaperReview(submitted: number, hasAdvisor: boolean): PaperReview
 }
 
 export default function App() {
-  const [state, setState] = useState<GameState>(() => ({
-    ...INITIAL_STATE,
-    playerName: generateRandomPlayerName(),
-    researchInterestGroup: Math.floor(Math.random() * RESEARCH_INTEREST_GROUP_COUNT),
-  }));
+  const [state, setState] = useState<GameState>(() => {
+    const id = generatePlayerRunIdentity();
+    return {
+      ...INITIAL_STATE,
+      playerName: id.playerName,
+      playerContactEmail: id.playerContactEmail,
+      playerOfficeRoom: id.playerOfficeRoom,
+      researchInterestGroup: Math.floor(Math.random() * RESEARCH_INTEREST_GROUP_COUNT),
+    };
+  });
   const [activeTab, setActiveTab] = useState<Tab>('HOME');
   const [rightTab, setRightTab] = useState<RightTab>('LOGS');
   const [layoutZone, setLayoutZone] = useState<LayoutZone>('MAIN');
@@ -439,6 +444,9 @@ export default function App() {
       state.season,
       state.unlockedHonors,
       state.researchInterestGroup,
+      state.playerName,
+      state.playerContactEmail,
+      state.playerOfficeRoom,
     ]
   );
 
@@ -1948,7 +1956,8 @@ export default function App() {
                       <h3 className="text-xl sm:text-2xl font-bold leading-snug text-violet-950">
                         {studentProfile.playerName}
                       </h3>
-                      <p className="text-sm text-gray-600 mt-1 leading-relaxed">{studentProfile.roleLine}</p>
+                      <p className="text-sm text-gray-600 mt-1 leading-relaxed">{studentProfile.roleLinePrimary}</p>
+                      <p className="text-sm text-gray-500 mt-0.5 leading-relaxed">{studentProfile.stageLine}</p>
                       <p className="text-xs text-gray-400 mt-1">
                         第 {state.year} 学年 · {state.season}
                       </p>

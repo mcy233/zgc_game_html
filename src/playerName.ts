@@ -103,6 +103,110 @@ const SURNAMES = [
   '汤',
 ] as const;
 
+/** 与 SURNAMES 逐一下标对应，用于生成邮箱本地名（小写、无调号） */
+const SURNAME_PINYIN = [
+  'wang',
+  'li',
+  'zhang',
+  'liu',
+  'chen',
+  'yang',
+  'zhao',
+  'huang',
+  'zhou',
+  'wu',
+  'xu',
+  'sun',
+  'ma',
+  'zhu',
+  'hu',
+  'lin',
+  'guo',
+  'he',
+  'gao',
+  'luo',
+  'zheng',
+  'liang',
+  'xie',
+  'song',
+  'tang',
+  'xu',
+  'han',
+  'feng',
+  'deng',
+  'cao',
+  'peng',
+  'zeng',
+  'xiao',
+  'tian',
+  'dong',
+  'yuan',
+  'pan',
+  'yu',
+  'jiang',
+  'cai',
+  'yu',
+  'du',
+  'ye',
+  'cheng',
+  'su',
+  'wei',
+  'lv',
+  'ding',
+  'ren',
+  'shen',
+  'yao',
+  'lu',
+  'jiang',
+  'cui',
+  'zhong',
+  'tan',
+  'lu',
+  'wang',
+  'fan',
+  'jin',
+  'shi',
+  'liao',
+  'jia',
+  'xia',
+  'wei',
+  'fu',
+  'fang',
+  'bai',
+  'zou',
+  'meng',
+  'xiong',
+  'qin',
+  'qiu',
+  'jiang',
+  'yin',
+  'xue',
+  'yan',
+  'duan',
+  'lei',
+  'hou',
+  'long',
+  'shi',
+  'tao',
+  'li',
+  'he',
+  'gu',
+  'mao',
+  'hao',
+  'gong',
+  'shao',
+  'wan',
+  'qian',
+  'yan',
+  'qin',
+  'wu',
+  'dai',
+  'mo',
+  'kong',
+  'xiang',
+  'tang',
+] as const;
+
 const GIVEN_NAMES = [
   '思远',
   '明轩',
@@ -178,12 +282,112 @@ const GIVEN_NAMES = [
   '丽华',
 ] as const;
 
+/** 与 GIVEN_NAMES 逐一下标对应：名字整体拼音 slug（小写连写） */
+const GIVEN_SLUG = [
+  'siyuan',
+  'mingxuan',
+  'zihan',
+  'zixuan',
+  'junyu',
+  'yutong',
+  'bowen',
+  'xinyi',
+  'haoran',
+  'yutong',
+  'jiayi',
+  'zimo',
+  'ruoxi',
+  'jingxing',
+  'zhiyu',
+  'shuyao',
+  'chengze',
+  'wanqing',
+  'yanlin',
+  'shuyang',
+  'chuyu',
+  'mingche',
+  'jiashu',
+  'qingyan',
+  'yanqiu',
+  'yining',
+  'weizhou',
+  'tinglan',
+  'yuan',
+  'xingye',
+  'muyang',
+  'jingcheng',
+  'zhixia',
+  'wangshu',
+  'yanxi',
+  'huaijin',
+  'ruoyu',
+  'jingyao',
+  'siqi',
+  'yalin',
+  'junyan',
+  'huining',
+  'zeyu',
+  'shihan',
+  'yichen',
+  'jinyu',
+  'siyuan',
+  'zijin',
+  'qingyue',
+  'mingxu',
+  'yunshu',
+  'jinghe',
+  'shuyun',
+  'ruochen',
+  'yiran',
+  'zhiyao',
+  'yanshu',
+  'qingjia',
+  'mingyue',
+  'shuyao',
+  'chengyu',
+  'wanyi',
+  'yanbo',
+  'sirui',
+  'zihao',
+  'jingqi',
+  'haotian',
+  'kexin',
+  'yuxuan',
+  'mengqi',
+  'zhiqiang',
+  'lihua',
+] as const;
+
+const OFFICE_BUILDINGS = ['C5', 'C8', 'C9'] as const;
+
 function rndPick<T>(arr: readonly T[], rnd: () => number): T {
   return arr[Math.floor(rnd() * arr.length)]!;
 }
 
-/** 使用 Math.random；开局时在 useState 初始化器中调用一次即可固定本局姓名 */
-export function generateRandomPlayerName(): string {
+export type PlayerRunIdentity = {
+  playerName: string;
+  playerContactEmail: string;
+  playerOfficeRoom: string;
+};
+
+/** 开局一次：中文名、与名对应的邮箱、随机工位（楼栋三选一，楼层 1–4，房间两位数字） */
+export function generatePlayerRunIdentity(): PlayerRunIdentity {
   const rnd = Math.random;
-  return rndPick(SURNAMES, rnd) + rndPick(GIVEN_NAMES, rnd);
+  const si = Math.floor(rnd() * SURNAMES.length);
+  const gi = Math.floor(rnd() * GIVEN_NAMES.length);
+  const playerName = SURNAMES[si]! + GIVEN_NAMES[gi]!;
+  const local = `${GIVEN_SLUG[gi]}.${SURNAME_PINYIN[si]}`.toLowerCase();
+  const playerContactEmail = `${local}@baz.edu.cn`;
+
+  const code = OFFICE_BUILDINGS[Math.floor(rnd() * OFFICE_BUILDINGS.length)]!;
+  const floor = 1 + Math.floor(rnd() * 4);
+  const room = 10 + Math.floor(rnd() * 90);
+  const playerOfficeRoom = `${code}-${floor}${String(room).padStart(2, '0')} 工位`;
+
+  return { playerName, playerContactEmail, playerOfficeRoom };
+}
+
+/** 仅姓名；兜底用。正常开局请用 generatePlayerRunIdentity */
+export function generateRandomPlayerName(): string {
+  return generatePlayerRunIdentity().playerName;
 }

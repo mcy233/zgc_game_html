@@ -8,8 +8,10 @@ import { getResearchBulletsForPhase, type ResearchInterestPhase } from './resear
 export type StudentProfileCard = {
   /** 玩家随机中文姓名（与顶栏大标题一致） */
   playerName: string;
-  /** 身份一行：年级、单位、方向、阶段 */
-  roleLine: string;
+  /** 年级、单位、方向（不含阶段） */
+  roleLinePrimary: string;
+  /** 当前培养阶段，单独一行展示 */
+  stageLine: string;
   /** 顶栏小字：当前称号（无后缀） */
   headline: string;
   /** 一两句话综述：多为第三人称或话题主语开头 */
@@ -75,20 +77,20 @@ function resolvePhase(m: Milestone): Phase {
 
 const YEAR_GRADE_CN = ['一', '二', '三', '四'] as const;
 
-function buildRoleLine(state: GameState, phase: Phase): string {
+function buildRoleLineParts(state: GameState, phase: Phase): { primary: string; stageLine: string } {
   const base = `${BZA.short} · ${BZA.focus}`;
   const stage = state.milestone;
   if (phase === 'GRADUATED') {
-    return `已获得博士学位 · ${base} · 阶段：${stage}`;
+    return { primary: `已获得博士学位 · ${base}`, stageLine: `阶段：${stage}` };
   }
   if (phase === 'DROPPED') {
-    return `培养轨迹已结束 · ${base} · 最后阶段：${stage}`;
+    return { primary: `培养轨迹已结束 · ${base}`, stageLine: `最后阶段：${stage}` };
   }
   const y =
     state.year >= 1 && state.year <= YEAR_GRADE_CN.length
       ? YEAR_GRADE_CN[state.year - 1]!
       : String(state.year);
-  return `博士生${y}年级 · ${base} · 当前阶段：${stage}`;
+  return { primary: `博士生${y}年级 · ${base}`, stageLine: `当前阶段：${stage}` };
 }
 
 /** 综述段：第三人称 / 无主语句为主，偶尔一句自嘲 */
@@ -267,8 +269,8 @@ const BUILDING_CODES = ['C5', 'C8', 'C9'] as const;
 
 function buildContactRoom(rnd: () => number, quarter: number, year: number): string {
   const code = BUILDING_CODES[Math.floor(rnd() * BUILDING_CODES.length)]!;
-  const floor = 3 + ((quarter + year * 2) % 6);
-  const room = 10 + ((quarter * 7 + year * 11) % 40);
+  const floor = 1 + ((quarter + year * 2) % 4);
+  const room = 10 + ((quarter * 7 + year * 11) % 90);
   return `${code}-${floor}${String(room).padStart(2, '0')} 工位`;
 }
 
@@ -280,7 +282,7 @@ export function buildStudentProfile(state: GameState): StudentProfileCard {
     state.playerName && state.playerName.trim().length > 0
       ? state.playerName.trim()
       : generateRandomPlayerName();
-  const roleLine = buildRoleLine(state, phase);
+  const { primary: roleLinePrimary, stageLine } = buildRoleLineParts(state, phase);
   const headline = resolveProfileHeadline(state);
   const bioBlurb = bioBlurbForPhase(phase, state.year, rnd);
   const educationLines = educationLinesFor(state, phase, rnd);
@@ -291,13 +293,23 @@ export function buildStudentProfile(state: GameState): StudentProfileCard {
   const quoteRnd = mulberry32(signatureBlockSeed(state));
   const quote = pick(quotePool, quoteRnd);
 
+  const contactEmail =
+    state.playerContactEmail && state.playerContactEmail.trim().length > 0
+      ? state.playerContactEmail.trim()
+      : buildContactEmail(rnd);
+  const contactRoom =
+    state.playerOfficeRoom && state.playerOfficeRoom.trim().length > 0
+      ? state.playerOfficeRoom.trim()
+      : buildContactRoom(rnd, state.quarter, state.year);
+
   return {
     playerName,
-    roleLine,
+    roleLinePrimary,
+    stageLine,
     headline,
     bioBlurb,
-    contactEmail: buildContactEmail(rnd),
-    contactRoom: buildContactRoom(rnd, state.quarter, state.year),
+    contactEmail,
+    contactRoom,
     educationLines,
     researchBullets,
     publicationsText,
@@ -309,7 +321,7 @@ export function studentProfileToPlainText(card: StudentProfileCard): string {
   return [
     card.playerName,
     card.headline,
-    card.roleLine,
+    `${card.roleLinePrimary} ${card.stageLine}`,
     card.bioBlurb,
     `教育：${card.educationLines.join(' ')}`,
     `研究：${card.researchBullets.join(' ')}`,
