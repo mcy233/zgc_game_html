@@ -32,7 +32,9 @@ import {
   HeartHandshake,
   ThumbsUp,
   Archive,
-  HelpCircle
+  HelpCircle,
+  Mail,
+  MapPin,
 } from 'lucide-react';
 import {
   GameState,
@@ -60,9 +62,12 @@ import {
   rollWritePaperMisconductDelta,
   rollLiteraturePaperProgressDelta,
   rollExperimentPaperProgressDelta,
+  ACTIONS_PER_QUARTER,
 } from './constants';
+import { POTENTIAL_ADVISOR_VISIT_OUTCOMES } from './advisorVisitContent';
 import { pickLeaveLine, pickJoinLine, applySeniorFarewellGifts } from './labTurnover';
-import { generateAdvisorFeedback, generateRandomEvent, generateStudentBio, generateMomentContent, generateExternalMoment } from './services/geminiService';
+import { generateAdvisorFeedback, generateRandomEvent, generateMomentContent, generateExternalMoment } from './services/geminiService';
+import { buildStudentProfile } from './studentProfileContent';
 import { AssetThumb, AvatarThumb, advisorAvatarKey, labAvatarKey } from './SpriteThumbs';
 import { BZA, BZA_GAME_TITLE } from './schoolBranding';
 import { pickRandomQuarterChoice } from './quarterChoiceEvents';
@@ -130,6 +135,7 @@ const STAT_LABELS: Record<string, string> = {
   reputationGainMultiplier: '声望获取倍率',
   gpuGainPerQuarter: '每季额外算力',
   fundingGainPerQuarter: '每季额外资金',
+  mentorImpressionGain: '导师印象（好感积累）',
 };
 
 /** 兼容 PascalCase / camelCase 字段名 */
@@ -248,9 +254,9 @@ function failureGameOverCopy(m: Milestone): { title: string; body: string } {
   }
 }
 
-/** 下一次插入「他人动态」所需行动次数，均匀随机 ∈ [3, 10] */
+/** 下一次插入「他人动态」所需行动次数，均匀随机 ∈ [4, 11]（略拉长间隔） */
 function randomExternalMomentThreshold(): number {
-  return 3 + Math.floor(Math.random() * 8);
+  return 4 + Math.floor(Math.random() * 8);
 }
 
 type PaperReviewDetail = {
@@ -333,7 +339,7 @@ function computePaperReview(submitted: number, hasAdvisor: boolean): PaperReview
     delta.reputation += accepted * 9;
     delta.citations += accepted * (12 + Math.floor(Math.random() * 26));
     delta.advisorFavor += accepted * 4;
-    delta.progress += accepted * 1;
+    delta.progress += accepted * 3;
     if (hasAdvisor) {
       const party = accepted * (350 + Math.floor(Math.random() * 220));
       delta.funding -= party;
@@ -368,9 +374,6 @@ export default function App() {
   const [advisorMessage, setAdvisorMessage] = useState<string>(
     `欢迎来到${BZA.short}。项目制培养节奏紧，先稳住心态，再谈「${BZA.triad}」。`
   );
-  const [studentBio, setStudentBio] = useState<string>(
-    `一名${BZA.name}、主攻 ${BZA.focus} 的博士研究生，正在适应这里的培养节奏。`
-  );
   const [isLoading, setIsLoading] = useState(false);
   const [isWarningModalOpen, setIsWarningModalOpen] = useState(false);
   const [warningMessage, setWarningMessage] = useState("");
@@ -404,6 +407,26 @@ export default function App() {
   const tutorialSteps = useMemo(
     () => TUTORIAL_STEPS.filter((s) => s.id !== 'advisor' || state.hasAdvisor),
     [state.hasAdvisor]
+  );
+
+  const studentProfile = useMemo(
+    () => buildStudentProfile(state),
+    [
+      state.milestone,
+      state.quarter,
+      state.papersPublished,
+      state.citations,
+      state.hasAdvisor,
+      state.advisorType,
+      state.year,
+      state.reputation,
+      state.credits,
+      state.submittedPapers,
+      state.sanity,
+      state.misconduct,
+      state.advisorName,
+      state.season,
+    ]
   );
 
   useEffect(() => {
@@ -520,26 +543,7 @@ export default function App() {
     }));
   }, [state]);
 
-  // Update bio when milestone or results change
-  useEffect(() => {
-    const updateBio = async () => {
-      const bio = await generateStudentBio(state);
-      setStudentBio(bio);
-    };
-    updateBio();
-  }, []);
-
-  useEffect(() => {
-    const updateBio = async () => {
-      const bio = await generateStudentBio(state);
-      setStudentBio(bio);
-    };
-    if (state.quarter % 4 === 1 || state.papersPublished > 0) {
-      updateBio();
-    }
-  }, [state.milestone, state.papersPublished, state.citations]);
-
-  /** 每次消耗季度行动后调用：累计 3~10 次（随机阈值）则插入一条他人朋友圈 */
+  /** 每次消耗季度行动后调用：累计 4~11 次（随机阈值）则插入一条他人朋友圈 */
   const tickExternalMomentAfterAction = useCallback((prev: GameState, newState: GameState) => {
     const threshold = prev.externalMomentThreshold;
     const nextCount = prev.actionsSinceExternalMoment + 1;
@@ -921,8 +925,8 @@ export default function App() {
   };
 
   const handleAction = (action: Action, force: boolean = false) => {
-    if (state.actionsThisQuarter >= 30) {
-      addLog("本季度行动次数已达上限（30次）。请进入下个季度。", "WARNING");
+    if (state.actionsThisQuarter >= ACTIONS_PER_QUARTER) {
+      addLog(`本季度行动次数已达上限（${ACTIONS_PER_QUARTER} 次）。请进入下个季度。`, "WARNING");
       return;
     }
 
@@ -1117,7 +1121,7 @@ export default function App() {
         }
       }
 
-      if (Math.random() < 0.09) {
+      if (Math.random() < 0.065) {
         queueMicrotask(() => addMoment(undefined, newState));
       }
 
@@ -1184,7 +1188,7 @@ export default function App() {
 
   // Self-Regulation Actions
   const handleCampusWalk = (force: boolean = false) => {
-    if (state.actionsThisQuarter >= 30) {
+    if (state.actionsThisQuarter >= ACTIONS_PER_QUARTER) {
       addLog("本季度行动次数已达上限。", "WARNING");
       return;
     }
@@ -1238,7 +1242,7 @@ export default function App() {
   };
 
   const handleInteraction = (personId: string, isAdvisor: boolean = false) => {
-    if (state.actionsThisQuarter >= 30) {
+    if (state.actionsThisQuarter >= ACTIONS_PER_QUARTER) {
       addLog("本季度行动次数已达上限。", "WARNING");
       return;
     }
@@ -1288,7 +1292,7 @@ export default function App() {
   };
 
   const handleSlackOff = (force: boolean = false) => {
-    if (state.actionsThisQuarter >= 30) {
+    if (state.actionsThisQuarter >= ACTIONS_PER_QUARTER) {
       addLog("本季度行动次数已达上限。", "WARNING");
       return;
     }
@@ -1341,7 +1345,7 @@ export default function App() {
   };
 
   const handleOuting = (force: boolean = false) => {
-    if (state.actionsThisQuarter >= 30) {
+    if (state.actionsThisQuarter >= ACTIONS_PER_QUARTER) {
       addLog("本季度行动次数已达上限。", "WARNING");
       return;
     }
@@ -1380,7 +1384,7 @@ export default function App() {
       let extraDesc = "";
       // Extra Event: Inspiration
       if (Math.random() < 0.15) {
-        newState.progress = Math.min(100, newState.progress + 2);
+        newState.progress = Math.min(100, newState.progress + 6);
         extraDesc = " 在外出的路上突然灵光一闪，想到了困扰已久的实验难题！科研进度增加。";
       }
 
@@ -1394,7 +1398,7 @@ export default function App() {
       setCurrentEvent({
         title: "外出游玩",
         description: mainDesc + extraDesc,
-        effect: { funding: -500, energy: -30, sanity: 25, health: 15, progress: extraDesc ? 2 : 0 }
+        effect: { funding: -500, energy: -30, sanity: 25, health: 15, progress: extraDesc ? 6 : 0 }
       });
       setIsEventModalOpen(true);
 
@@ -1404,7 +1408,7 @@ export default function App() {
   };
 
   const handleRetractPaper = (force: boolean = false) => {
-    if (state.actionsThisQuarter >= 50) {
+    if (state.actionsThisQuarter >= ACTIONS_PER_QUARTER) {
       addLog("本季度行动次数已达上限。", "WARNING");
       return;
     }
@@ -1554,7 +1558,7 @@ export default function App() {
   };
 
   const visitPotentialAdvisor = (type: AdvisorType) => {
-    if (state.actionsThisQuarter >= 30) {
+    if (state.actionsThisQuarter >= ACTIONS_PER_QUARTER) {
       addLog("本季度行动次数已达上限。", "WARNING");
       return;
     }
@@ -1565,20 +1569,54 @@ export default function App() {
       return;
     }
     const profile = ADVISOR_PROFILES[type];
+    const pool = POTENTIAL_ADVISOR_VISIT_OUTCOMES[type];
+    const outcome = pool[Math.floor(Math.random() * pool.length)]!;
+    const favorDelta = Math.round(15 * profile.favorGainRate);
+    const bonus = outcome.bonus ?? {};
+
     setState(prev => {
       const newPotential = { ...prev.potentialAdvisors };
-      newPotential[type] = Math.min(100, newPotential[type] + (15 * profile.favorGainRate));
+      newPotential[type] = Math.min(100, newPotential[type] + favorDelta);
       const next: GameState = {
         ...prev,
         funding: prev.funding - cost,
         energy: prev.energy - energyCost,
         actionsThisQuarter: prev.actionsThisQuarter + 1,
         potentialAdvisors: newPotential,
-        logs: [{ quarter: prev.quarter, message: `拜访了${profile.label}，交流了学术心得。`, type: 'SUCCESS' }, ...prev.logs]
+        sanity: Math.min(100, Math.max(0, prev.sanity + (bonus.sanity ?? 0))),
+        reputation: Math.min(100, Math.max(0, prev.reputation + (bonus.reputation ?? 0))),
+        progress: Math.min(100, Math.max(0, prev.progress + (bonus.progress ?? 0))),
+        misconduct: Math.min(100, Math.max(0, prev.misconduct + (bonus.misconduct ?? 0))),
+        logs: [
+          {
+            quarter: prev.quarter,
+            message: `拜访了${profile.label}：${outcome.text.slice(0, 48)}${outcome.text.length > 48 ? '…' : ''}`,
+            type: 'SUCCESS',
+          },
+          ...prev.logs,
+        ],
       };
       tickExternalMomentAfterAction(prev, next);
       return next;
     });
+
+    const effect: Record<string, number> = {
+      funding: -cost,
+      energy: -energyCost,
+      mentorImpressionGain: favorDelta,
+    };
+    if (bonus.sanity) effect.sanity = bonus.sanity;
+    if (bonus.reputation) effect.reputation = bonus.reputation;
+    if (bonus.progress) effect.progress = bonus.progress;
+    if (bonus.misconduct) effect.misconduct = bonus.misconduct;
+
+    setCurrentEvent({
+      title: `拜访 · ${profile.label}`,
+      description: outcome.text,
+      effect: roundEffectRecord(effect),
+    });
+    setIsEventModalOpen(true);
+    addLog(`拜访了${profile.label}。`, 'SUCCESS');
   };
 
 
@@ -1619,7 +1657,10 @@ export default function App() {
               </div>
               <div className="text-right border-l border-black/5 pl-3 sm:pl-4">
                 <p className="text-[9px] sm:text-[10px] font-mono uppercase opacity-40">季度行动</p>
-                <p className="text-sm sm:text-base font-bold text-amber-600">{30 - state.actionsThisQuarter} <span className="text-[10px] opacity-30">/ 30</span></p>
+                <p className="text-sm sm:text-base font-bold text-amber-600">
+                  {ACTIONS_PER_QUARTER - state.actionsThisQuarter}{' '}
+                  <span className="text-[10px] opacity-30">/ {ACTIONS_PER_QUARTER}</span>
+                </p>
               </div>
             </div>
             <button 
@@ -1847,21 +1888,65 @@ export default function App() {
                   exit={{ opacity: 0, y: -10 }}
                   className="bg-white p-8 rounded-3xl border border-black/5 shadow-sm flex flex-col gap-8"
                 >
-                  <div className="flex items-center gap-6">
-                    <AvatarThumb spriteKey="player" frameClassName="w-24 h-24 border-2 border-black/5 shadow-inner" />
-                    <div>
-                      <h3 className="text-2xl font-bold">{BZA.short} · AI 方向博士生</h3>
+                  <div className="flex flex-col sm:flex-row sm:items-start gap-6">
+                    <AvatarThumb spriteKey="player" frameClassName="w-24 h-24 border-2 border-black/5 shadow-inner shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <h3 className="text-xl sm:text-2xl font-bold leading-snug">{studentProfile.headline}</h3>
                       <p className="text-sm text-gray-500 mt-1">
-                        第 {state.year} 学年 · {state.milestone} · {BZA.focus}
+                        第 {state.year} 学年 · {state.season} · {state.milestone} · {BZA.focus}
                       </p>
+                      <div className="mt-3 flex flex-col gap-1 text-[11px] text-gray-500 font-mono">
+                        <span className="flex items-center gap-2 min-w-0">
+                          <Mail size={12} className="shrink-0 opacity-50" />
+                          <span className="truncate">{studentProfile.contactEmail}</span>
+                        </span>
+                        <span className="flex items-center gap-2 min-w-0">
+                          <MapPin size={12} className="shrink-0 opacity-50" />
+                          <span>{studentProfile.contactRoom}</span>
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  <div className="space-y-4">
+                  <div className="space-y-5">
                     <h4 className="text-xs font-mono uppercase opacity-40 border-b border-black/5 pb-2">个人简介</h4>
-                    <p className="text-lg leading-relaxed font-serif italic text-gray-700">
-                      {studentBio}
-                    </p>
+                    <p className="text-base sm:text-lg leading-relaxed text-gray-800">{studentProfile.intro}</p>
+
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="rounded-2xl bg-slate-50 border border-black/5 border-l-4 border-l-blue-500 p-4">
+                        <p className="text-[10px] font-mono uppercase tracking-wider text-blue-700/90 mb-2">研究兴趣与工作</p>
+                        <ul className="text-sm text-gray-700 space-y-1.5 list-disc pl-4 leading-relaxed">
+                          {studentProfile.researchBullets.map((line, i) => (
+                            <li key={i}>{line}</li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div className="rounded-2xl bg-slate-50 border border-black/5 border-l-4 border-l-amber-500 p-4">
+                        <p className="text-[10px] font-mono uppercase tracking-wider text-amber-800/90 mb-2">课题组与合作</p>
+                        <ul className="text-sm text-gray-700 space-y-1.5 list-disc pl-4 leading-relaxed">
+                          {studentProfile.labDiaryBullets.map((line, i) => (
+                            <li key={i}>{line}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
+                    <div className="rounded-2xl bg-black/[0.03] border border-black/5 p-4">
+                      <p className="text-[10px] font-mono uppercase opacity-40 mb-2">主要成就</p>
+                      <p className="text-sm text-gray-800 leading-relaxed">{studentProfile.achievements}</p>
+                    </div>
+
+                    <div className="relative py-4 px-2">
+                      <span className="pointer-events-none select-none text-5xl sm:text-6xl text-black/[0.07] font-serif leading-none absolute left-0 top-1">
+                        &ldquo;
+                      </span>
+                      <p className="text-center text-sm sm:text-base italic text-gray-600 leading-relaxed px-6 sm:px-10">
+                        {studentProfile.quote}
+                      </p>
+                      <span className="pointer-events-none select-none text-5xl sm:text-6xl text-black/[0.07] font-serif leading-none absolute right-0 bottom-0">
+                        &rdquo;
+                      </span>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-3 gap-4">
@@ -1973,7 +2058,7 @@ export default function App() {
                                   </div>
                                   <button
                                     onClick={() => handleInteraction('advisor', true)}
-                                    disabled={state.interactionsThisQuarter.includes('advisor') || state.actionsThisQuarter >= 30}
+                                    disabled={state.interactionsThisQuarter.includes('advisor') || state.actionsThisQuarter >= ACTIONS_PER_QUARTER}
                                     className={`shrink-0 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                                       state.interactionsThisQuarter.includes('advisor')
                                         ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
@@ -1984,7 +2069,7 @@ export default function App() {
                                   </button>
                                 </div>
                                 <p className="text-[10px] text-gray-500 mb-3 leading-relaxed">
-                                  互动可能触发：文献汇报、进度讨论、生涯规划、论文润色、单独午餐、组会汇报、申请算力等多种剧情，影响理智、进度、声望、好感、资金、算力等。
+                                  每次互动会进入一小段日常科研剧情（例如汇报、讨论、吃饭、申请资源等），也可能牵动你的状态与资源。
                                 </p>
                                 <StatBar icon={HeartHandshake} label="导师好感度" value={state.advisorFavor} color="bg-indigo-400" />
                               </div>
@@ -2009,7 +2094,7 @@ export default function App() {
                                     </div>
                                     <button
                                       onClick={() => handleInteraction(mate.id, false)}
-                                      disabled={state.interactionsThisQuarter.includes(mate.id) || state.actionsThisQuarter >= 30}
+                                      disabled={state.interactionsThisQuarter.includes(mate.id) || state.actionsThisQuarter >= ACTIONS_PER_QUARTER}
                                       className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
                                         state.interactionsThisQuarter.includes(mate.id) 
                                           ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
