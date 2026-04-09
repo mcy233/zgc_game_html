@@ -35,6 +35,7 @@ import {
   HelpCircle,
   Mail,
   MapPin,
+  ChevronDown,
 } from 'lucide-react';
 import {
   GameState,
@@ -69,7 +70,7 @@ import { pickLeaveLine, pickJoinLine, applySeniorFarewellGifts } from './labTurn
 import { generateAdvisorFeedback, generateRandomEvent, generateMomentContent, generateExternalMoment } from './services/geminiService';
 import { buildStudentProfile } from './studentProfileContent';
 import { generatePlayerRunIdentity } from './playerName';
-import { scanNewHonorIds, PROFILE_HONOR_BY_ID } from './profileHonors';
+import { scanNewHonorIds, PROFILE_HONOR_BY_ID, listUnlockedHonorsOrdered } from './profileHonors';
 import { RESEARCH_INTEREST_GROUP_COUNT } from './researchInterestGroups';
 import { AssetThumb, AvatarThumb, advisorAvatarKey, labAvatarKey } from './SpriteThumbs';
 import { BZA, BZA_GAME_TITLE } from './schoolBranding';
@@ -419,6 +420,8 @@ export default function App() {
   const honorPopupQueueRef = useRef<{ popupTitle: string; unlockBody: string }[]>([]);
   const [honorPopup, setHonorPopup] = useState<{ popupTitle: string; unlockBody: string } | null>(null);
   const prevUnlockedHonorsRef = useRef<string[]>([]);
+  const [honorHeadlineOpen, setHonorHeadlineOpen] = useState(false);
+  const honorHeadlineWrapRef = useRef<HTMLDivElement>(null);
 
   const tutorialSteps = useMemo(
     () => TUTORIAL_STEPS.filter((s) => s.id !== 'advisor' || state.hasAdvisor),
@@ -443,6 +446,9 @@ export default function App() {
       state.advisorName,
       state.season,
       state.unlockedHonors,
+      state.honorUnlockOrder,
+      state.honorHomeDisplayMode,
+      state.honorHomePinnedId,
       state.researchInterestGroup,
       state.playerName,
       state.playerContactEmail,
@@ -454,7 +460,13 @@ export default function App() {
     setState((prev) => {
       const ids = scanNewHonorIds(prev);
       if (ids.length === 0) return prev;
-      return { ...prev, unlockedHonors: [...new Set([...prev.unlockedHonors, ...ids])] };
+      const prevOrder = prev.honorUnlockOrder ?? [];
+      const orderAdd = ids.filter((id) => !prevOrder.includes(id));
+      return {
+        ...prev,
+        unlockedHonors: [...new Set([...prev.unlockedHonors, ...ids])],
+        honorUnlockOrder: [...prevOrder, ...orderAdd],
+      };
     });
   }, [
     state.quarter,
@@ -487,6 +499,21 @@ export default function App() {
     const next = honorPopupQueueRef.current.shift();
     setHonorPopup(next ?? null);
   }, []);
+
+  const unlockedHonorsSorted = useMemo(
+    () => listUnlockedHonorsOrdered(state),
+    [state.unlockedHonors, state.honorUnlockOrder]
+  );
+
+  useEffect(() => {
+    if (!honorHeadlineOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const el = honorHeadlineWrapRef.current;
+      if (el && !el.contains(e.target as Node)) setHonorHeadlineOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [honorHeadlineOpen]);
 
   useEffect(() => {
     try {
@@ -1950,9 +1977,71 @@ export default function App() {
                   <div className="flex flex-col sm:flex-row sm:items-start gap-6">
                     <AvatarThumb spriteKey="player" frameClassName="w-24 h-24 border-2 border-black/5 shadow-inner shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <p className="text-[10px] font-mono uppercase tracking-wider text-violet-700/80 mb-0.5">
-                        {studentProfile.headline}
-                      </p>
+                      <div ref={honorHeadlineWrapRef} className="relative mb-0.5">
+                        {unlockedHonorsSorted.length === 0 ? (
+                          <p className="text-[10px] font-mono uppercase tracking-wider text-violet-700/80">
+                            {studentProfile.headline}
+                          </p>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => setHonorHeadlineOpen((o) => !o)}
+                              className="text-[10px] font-mono uppercase tracking-wider text-violet-700/80 w-full text-left flex items-center gap-1 hover:opacity-85 rounded-md -mx-0.5 px-0.5 py-0.5 transition-opacity"
+                              title="点击切换首页展示称号"
+                            >
+                              <span className="truncate flex-1 min-w-0">{studentProfile.headline}</span>
+                              <ChevronDown
+                                size={12}
+                                className={`shrink-0 opacity-70 transition-transform ${honorHeadlineOpen ? 'rotate-180' : ''}`}
+                                aria-hidden
+                              />
+                            </button>
+                            {honorHeadlineOpen && (
+                              <div className="absolute left-0 top-full z-40 mt-1 w-[min(100%,18rem)] rounded-xl border border-black/10 bg-white shadow-xl py-1 max-h-52 overflow-y-auto">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setState((p) => ({
+                                      ...p,
+                                      honorHomeDisplayMode: 'latest',
+                                      honorHomePinnedId: null,
+                                    }));
+                                    setHonorHeadlineOpen(false);
+                                  }}
+                                  className={`w-full text-left px-3 py-2 text-[11px] hover:bg-violet-50 ${
+                                    state.honorHomeDisplayMode === 'latest' ? 'bg-violet-50 font-bold text-violet-900' : 'text-gray-700'
+                                  }`}
+                                >
+                                  跟随最新解锁
+                                </button>
+                                <div className="border-t border-black/5 my-0.5" />
+                                {unlockedHonorsSorted.map((h) => (
+                                  <button
+                                    key={h.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setState((p) => ({
+                                        ...p,
+                                        honorHomeDisplayMode: 'pinned',
+                                        honorHomePinnedId: h.id,
+                                      }));
+                                      setHonorHeadlineOpen(false);
+                                    }}
+                                    className={`w-full text-left px-3 py-2 text-[11px] hover:bg-gray-50 ${
+                                      state.honorHomeDisplayMode === 'pinned' && state.honorHomePinnedId === h.id
+                                        ? 'bg-gray-100 font-semibold text-gray-900'
+                                        : 'text-gray-600'
+                                    }`}
+                                  >
+                                    {h.headlineTitle}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
                       <h3 className="text-xl sm:text-2xl font-bold leading-snug text-violet-950">
                         {studentProfile.playerName}
                       </h3>
@@ -2265,6 +2354,26 @@ export default function App() {
               <span className="inline-flex h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white shrink-0" title="朋友圈有新动态" />
             )}
           </p>
+          {unlockedHonorsSorted.length > 0 && (
+            <div className="bg-white p-4 rounded-2xl border border-violet-100 shadow-sm shrink-0">
+              <p className="text-[10px] font-mono uppercase tracking-wider text-violet-700/85 mb-2 flex items-center gap-2">
+                <Trophy size={12} className="opacity-70" />
+                荣誉称号
+              </p>
+              <ul className="flex flex-col gap-2 max-h-52 overflow-y-auto pr-1 scrollbar-hide">
+                {unlockedHonorsSorted.map((h) => (
+                  <li
+                    key={h.id}
+                    className="rounded-xl border border-black/5 bg-violet-50/40 px-3 py-2 text-left"
+                  >
+                    <p className="text-xs font-bold text-violet-950 leading-snug">{h.headlineTitle}</p>
+                    <p className="text-[10px] text-gray-600 mt-1 leading-relaxed line-clamp-2">{h.unlockBody}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="flex bg-white p-1 rounded-xl border border-black/5 shadow-sm shrink-0">
             <button 
               onClick={() => setRightTab('LOGS')}

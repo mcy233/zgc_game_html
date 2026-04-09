@@ -6,6 +6,7 @@ import {
   AVATAR_ATLAS_CONFIG,
   AVATAR_ATLAS_ORDER,
 } from './constants';
+import { assetUrl } from './assetUrl';
 import type { AdvisorType, LabMate } from './types';
 import { spriteStyleUniformGridPx } from './spriteAtlas';
 
@@ -99,7 +100,7 @@ export function AssetThumb({ assetId }: { assetId: string }) {
 
   return (
     <img
-      src={`/assets/${assetId}.png`}
+      src={assetUrl(`assets/${assetId}.png`)}
       alt=""
       className="w-full h-full object-cover"
       onError={() => setFileBroken(true)}

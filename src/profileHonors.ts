@@ -179,16 +179,53 @@ export const PROFILE_HONOR_BY_ID: Record<string, ProfileHonorDef> = Object.fromE
   PROFILE_HONORS.map((h) => [h.id, h])
 );
 
-export function resolveProfileHeadline(state: GameState): string {
-  const unlocked = state.unlockedHonors;
-  if (!unlocked || unlocked.length === 0) return DEFAULT_PROFILE_HEADLINE;
-  let best: ProfileHonorDef | null = null;
-  for (const id of unlocked) {
-    const h = PROFILE_HONOR_BY_ID[id];
-    if (!h) continue;
-    if (!best || h.priority < best.priority) best = h;
+/** 首页顶栏称号：`latest` 为解锁顺序中最后一项；`pinned` 为玩家固定展示 */
+export function resolveHomeHeadlineTitle(state: GameState): string {
+  const unlocked = new Set(state.unlockedHonors ?? []);
+  if (unlocked.size === 0) return DEFAULT_PROFILE_HEADLINE;
+
+  if (state.honorHomeDisplayMode === 'pinned' && state.honorHomePinnedId) {
+    const pid = state.honorHomePinnedId;
+    if (unlocked.has(pid)) {
+      const h = PROFILE_HONOR_BY_ID[pid];
+      if (h) return h.headlineTitle;
+    }
   }
-  return best?.headlineTitle ?? DEFAULT_PROFILE_HEADLINE;
+
+  const order = state.honorUnlockOrder ?? [];
+  for (let i = order.length - 1; i >= 0; i--) {
+    const id = order[i]!;
+    if (!unlocked.has(id)) continue;
+    const h = PROFILE_HONOR_BY_ID[id];
+    if (h) return h.headlineTitle;
+  }
+
+  for (const id of state.unlockedHonors) {
+    const h = PROFILE_HONOR_BY_ID[id];
+    if (h) return h.headlineTitle;
+  }
+  return DEFAULT_PROFILE_HEADLINE;
+}
+
+/** 动态页荣誉墙：按解锁先后，其余未在顺序表中的补在后 */
+export function listUnlockedHonorsOrdered(state: GameState): ProfileHonorDef[] {
+  const unlocked = new Set(state.unlockedHonors ?? []);
+  const order = state.honorUnlockOrder ?? [];
+  const seen = new Set<string>();
+  const out: ProfileHonorDef[] = [];
+  for (const id of order) {
+    if (seen.has(id) || !unlocked.has(id)) continue;
+    seen.add(id);
+    const h = PROFILE_HONOR_BY_ID[id];
+    if (h) out.push(h);
+  }
+  for (const id of state.unlockedHonors) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const h = PROFILE_HONOR_BY_ID[id];
+    if (h) out.push(h);
+  }
+  return out;
 }
 
 export function scanNewHonorIds(state: GameState): string[] {

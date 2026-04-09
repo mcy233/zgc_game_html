@@ -1,7 +1,7 @@
 import type { GameState, Milestone } from './types';
 import { BZA } from './schoolBranding';
 import { generateRandomPlayerName } from './playerName';
-import { resolveProfileHeadline } from './profileHonors';
+import { resolveHomeHeadlineTitle } from './profileHonors';
 import { getResearchBulletsForPhase, type ResearchInterestPhase } from './researchInterestGroups';
 
 /** 首页个人主页卡片：学术主页式分块，少叠「我」字，语气可诙谐 */
@@ -283,7 +283,7 @@ export function buildStudentProfile(state: GameState): StudentProfileCard {
       ? state.playerName.trim()
       : generateRandomPlayerName();
   const { primary: roleLinePrimary, stageLine } = buildRoleLineParts(state, phase);
-  const headline = resolveProfileHeadline(state);
+  const headline = resolveHomeHeadlineTitle(state);
   const bioBlurb = bioBlurbForPhase(phase, state.year, rnd);
   const educationLines = educationLinesFor(state, phase, rnd);
   const researchBullets = getResearchBulletsForPhase(state.researchInterestGroup, phase as ResearchInterestPhase);

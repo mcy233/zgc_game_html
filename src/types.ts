@@ -70,6 +70,11 @@ export interface GameState {
   playerOfficeRoom: string;
   /** 已解锁的个人主页称号 id（见 profileHonors） */
   unlockedHonors: string[];
+  /** 称号首次解锁顺序（用于「最新」与荣誉墙排序） */
+  honorUnlockOrder: string[];
+  /** 首页顶栏：latest=展示最后一次解锁；pinned=固定展示 honorHomePinnedId */
+  honorHomeDisplayMode: 'latest' | 'pinned';
+  honorHomePinnedId: string | null;
   /** 研究兴趣文案组索引 0..4，开局随机，本局固定 */
   researchInterestGroup: number;
   

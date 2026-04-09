@@ -1,4 +1,5 @@
 import { Action, AdvisorType, GameState, Asset } from './types';
+import { assetUrl } from './assetUrl';
 import { BZA_WELCOME_LOG } from './schoolBranding';
 
 /** 每季度可用于行动、拜访、互动、自我调节等的总次数上限 */
@@ -12,6 +13,9 @@ export const INITIAL_STATE: GameState = {
   playerContactEmail: '',
   playerOfficeRoom: '',
   unlockedHonors: [],
+  honorUnlockOrder: [],
+  honorHomeDisplayMode: 'latest',
+  honorHomePinnedId: null,
   researchInterestGroup: 0,
   sanity: 80,
   health: 90,
@@ -382,7 +386,7 @@ export const ASSET_ATLAS_ORDER: readonly string[] = ASSETS_LIBRARY.map(a => a.id
 
 /** 与 `public/assets/asset_atlas.png` 实测像素一致（换图后请读 PNG IHDR 更新） */
 export const ASSET_ATLAS_CONFIG = {
-  src: '/assets/asset_atlas.png',
+  src: assetUrl('assets/asset_atlas.png'),
   cols: 4,
   rows: 2,
   pixelWidth: 1376,
@@ -413,7 +417,7 @@ export const AVATAR_ATLAS_ORDER = [
 
 /** 与 `public/assets/avatar_atlas.png` 实测像素一致（换图后请读 PNG IHDR 更新） */
 export const AVATAR_ATLAS_CONFIG = {
-  src: '/assets/avatar_atlas.png',
+  src: assetUrl('assets/avatar_atlas.png'),
   cols: 4,
   rows: 3,
   pixelWidth: 1200,
