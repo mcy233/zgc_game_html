@@ -96,7 +96,7 @@ export function applySeniorFarewellGifts(
       break;
     }
     case 'progress': {
-      const v = 1 + Math.floor(Math.random() * 4);
+      const v = (1 + Math.floor(Math.random() * 4)) * 3;
       state.progress = Math.min(100, state.progress + v);
       bump('progress', v);
       story.push(`【赠礼】${graduate.name}送你手写版「答辩委员会常见刁钻问题」，阶段心里更有底了。`);

@@ -1,3 +1,5 @@
+import { ACTIONS_PER_QUARTER } from './constants';
+
 /** 与 App.tsx 中 Tab / RightTab 一致 */
 export type OnboardingTab = 'HOME' | 'DAILY' | 'RESEARCH' | 'TEAM' | 'ASSETS';
 export type OnboardingRightTab = 'LOGS' | 'MOMENTS';
@@ -51,9 +53,9 @@ export const SURVIVAL_SECTIONS: {
     bullets: [
       `<strong class="${S}">资金 / 算力</strong>：用于日常行动、科研消耗与资产购买；每季度有补助与算力进账。`,
       `<strong class="${S}">理智 / 健康 / 精力</strong>：参与「自我调节」可恢复；科研与高压行动会持续消耗。`,
-      `<strong class="${S}">学术不端嫌疑</strong>：<strong class="${S}">论文撰写</strong>有概率触发，每次增量以约 <strong class="${S}">5</strong> 为均值小幅上下浮动，并配有随机叙事说明缘由；<strong class="${S}">出差报告（顶会）</strong>有概率因现场表现<strong class="${S}">降低或升高</strong>嫌疑，结算时会显示在行动结果的「影响」中。`,
+      `<strong class="${S}">学术不端嫌疑</strong>：赶论文、跑会议都要守住诚信底线。<strong class="${S}">撰写论文</strong>尤其不要心存侥幸；<strong class="${S}">出差与顶会交流</strong>上应对是否得体，也会影响别人对你的观感。这条指标在左栏可见，过高会直接导致游戏结束。`,
       `<strong class="${S}">学术声望 / 已发表论文</strong>：影响阶段推进与答辩门槛；答辩对声望与论文数量有硬性要求。`,
-      `<strong class="${S}">阶段进度 / 学分 / 论文撰写进度</strong>：随行动推进；达到阈值会触发<strong class="${S}">阶段转换</strong>与剧情提示。`,
+      `<strong class="${S}">阶段进度 / 学分 / 论文撰写进度</strong>：随行动推进；<strong class="${S}">推进到一定程度</strong>会迎来新的培养阶段与相关剧情。`,
     ],
     highlight: ['撤稿止损可降低不端嫌疑，但会损伤声望与论文计数，请谨慎使用。'],
   },
@@ -69,7 +71,7 @@ export const SURVIVAL_SECTIONS: {
     heading: '五、季度与随机事件',
     bullets: [
       `点击<strong class="${S}">进入下个季度</strong>后，会结算论文审稿、资源补助，并弹出<strong class="${S}">季度总结</strong>。`,
-      `<strong class="${S}">第一类随机事件</strong>：有概率自动弹出并直接结算数值（与季度总结独立）。`,
+      `<strong class="${S}">第一类随机事件</strong>：在校期间可能突然遇到各类插曲，会以弹窗形式出现并改变部分状态（与每季末尾的总结不同）。`,
       `<strong class="${S}">第二类培养抉择</strong>：关闭季度总结后，可能弹出<strong class="${S}">三选一</strong>事件——各选项在资金、嫌疑、声望、精力等之间<strong class="${S}">有利有弊</strong>，没有绝对最优解。`,
       `每学年<strong class="${S}">秋季</strong>可能有<strong class="${S}">实验室人事</strong>说明（离校/入组等）；与高好感师兄师姐离别时或有小礼物。`,
     ],
@@ -138,7 +140,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'daily',
     title: '日常行动',
-    body: `修课、讲坛、助教等消耗行动次数，换取学分、资金、进度或好感。注意每季<strong class="${T}">最多 30 次</strong>行动，用完需进入下季度。`,
+    body: `修课、讲坛、助教等消耗行动次数，换取学分、资金、进度或好感。注意每季<strong class="${T}">最多 ${ACTIONS_PER_QUARTER} 次</strong>行动，用完需进入下季度。`,
     highlightId: 'onb-main-body',
     layoutZone: 'MAIN',
     activeTab: 'DAILY',
@@ -146,7 +148,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'research',
     title: '科研行动',
-    body: `文献、跑实验、写论文、出差报告等是论文与声望的主要来源；<strong class="${T}">写论文</strong>有概率触发学术不端嫌疑，增量以约 <strong class="${T}">5</strong> 为均值小幅波动，并会随机描述「这次哪里走了捷径」（会显示在「影响」中）；<strong class="${T}">出差</strong>则可能因表现加减嫌疑，同样会列出。`,
+    body: `文献、跑实验、写论文、出差报告等是论文与声望的主要来源。<strong class="${T}">写论文</strong>时也要注意学术诚信噢——赶工、走捷径可能在圈子里留下隐患。<strong class="${T}">出差与会议报告</strong>上的表现，有时也会带来意想不到的风评变化。`,
     highlightId: 'onb-main-body',
     layoutZone: 'MAIN',
     activeTab: 'RESEARCH',
@@ -154,7 +156,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'team',
     title: '团队与导师',
-    body: `未拜师时可拜访、申请导师；入组后可与导师、同门<strong class="${T}">随机互动</strong>，影响好感与多项数值。`,
+    body: `未拜师时可拜访、申请导师；入组后可与导师、同门<strong class="${T}">随机互动</strong>，推进关系，也可能带来心态、资源上的小起伏。`,
     highlightId: 'onb-main-body',
     layoutZone: 'MAIN',
     activeTab: 'TEAM',

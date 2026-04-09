@@ -78,7 +78,7 @@ export const QUARTER_CHOICE_SCENARIOS: PendingQuarterChoice[] = [
         hint: '现金多，身心与合规压力都大',
         outcomeText:
           '企业演示如期上线，银行卡多了一笔可观的进账，但大论文的目录已经两周没动过，你心里清楚这笔账迟早要还。',
-        deltas: { funding: 1200, misconduct: 7, health: -8, sanity: -10, progress: -4 },
+        deltas: { funding: 1200, misconduct: 7, health: -8, sanity: -10, progress: -12 },
       },
       {
         id: 'gig_light',
@@ -94,7 +94,7 @@ export const QUARTER_CHOICE_SCENARIOS: PendingQuarterChoice[] = [
         hint: '没钱换清静，导师可能微词',
         outcomeText:
           '导师回了个「理解」，语气比你想象得淡。你趁机把断档的章节一口气续上了，穷一点但清静。',
-        deltas: { funding: 0, advisorFavor: -6, sanity: 8, misconduct: -2, progress: 3 },
+        deltas: { funding: 0, advisorFavor: -6, sanity: 8, misconduct: -2, progress: 9 },
       },
     ],
   },

@@ -1,5 +1,6 @@
 import { GameState, AdvisorType, MomentFeedSource } from "../types";
 import { BZA } from "../schoolBranding";
+import { buildStudentProfile, studentProfileToPlainText } from "../studentProfileContent";
 
 /**
  * 离线版内容生成服务
@@ -61,59 +62,30 @@ export async function generateAdvisorFeedback(state: GameState): Promise<string>
 export async function generateRandomEvent(state: GameState): Promise<{ title: string; description: string; effect: Partial<GameState> }> {
   const events = [
     { title: "GPU 集群维护", description: "学校的 GPU 集群要维护三天，你的实验被迫中断了。", effect: { gpuCredits: -200, sanity: -5 } },
-    { title: "深夜灵感", description: "你在洗澡时突然想到了一个绝妙的算法优化思路。", effect: { progress: 2, energy: -10 } },
+    { title: "深夜灵感", description: "你在洗澡时突然想到了一个绝妙的算法优化思路。", effect: { progress: 6, energy: -10 } },
     { title: "免费披萨", description: "隔壁实验室开会剩下了很多披萨，你饱餐了一顿。", effect: { health: 5, energy: 20 } },
     { title: "论文被拒", description: "你的论文被审稿人以“缺乏创新性”为由拒绝了。", effect: { sanity: -20, reputation: -2 } },
-    { title: "代码 Bug", description: "你发现跑了一周的实验结果全是错的，因为一个正负号写反了。", effect: { sanity: -15, progress: -2 } },
-    { title: "顶会截稿", description: "为了赶 DDL，你已经在实验室连续奋战了 48 小时。", effect: { energy: -40, health: -10, progress: 4 } },
+    { title: "代码 Bug", description: "你发现跑了一周的实验结果全是错的，因为一个正负号写反了。", effect: { sanity: -15, progress: -6 } },
+    { title: "顶会截稿", description: "为了赶 DDL，你已经在实验室连续奋战了 48 小时。", effect: { energy: -40, health: -10, progress: 12 } },
     { title: "学术讲座", description: "听了一场大牛的讲座，虽然没太听懂，但感觉不明觉厉。", effect: { reputation: 2, sanity: 5 } },
     { title: "硬盘损坏", description: "你的移动硬盘突然无法读取，幸好你昨天刚做了备份。", effect: { sanity: -5, funding: -100 } },
     { title: "导师请客", description: "导师今天心情好，带全组去吃了一顿大餐。", effect: { advisorFavor: 10, energy: 15 } },
     { title: "开源贡献", description: "你修复了一个知名开源项目的 Bug，获得了不少关注。", effect: { reputation: 5, citations: 10 } },
     { title: "键盘进水", description: "喝咖啡时不小心洒在了键盘上，损失了几百块。", effect: { funding: -500, sanity: -5 } },
-    { title: "意外发现", description: "在清理数据时，你发现了一个之前被忽略的有趣现象。", effect: { progress: 3, sanity: 10 } }
+    { title: "意外发现", description: "在清理数据时，你发现了一个之前被忽略的有趣现象。", effect: { progress: 9, sanity: 10 } }
   ];
 
   // 根据当前阶段筛选或增加特定事件
   if (state.milestone === '毕业答辩') {
-    events.push({ title: "答辩预演", description: "你在组会上进行了答辩预演，被师兄师姐问得哑口无言。", effect: { sanity: -10, progress: 2 } });
+    events.push({ title: "答辩预演", description: "你在组会上进行了答辩预演，被师兄师姐问得哑口无言。", effect: { sanity: -10, progress: 6 } });
   }
 
   return events[Math.floor(Math.random() * events.length)];
 }
 
+/** 与首页结构化简介同源；保留异步签名供旧调用方兼容 */
 export async function generateStudentBio(state: GameState): Promise<string> {
-  let bio = `一名${BZA.name}、正在经历 ${state.milestone} 阶段的 AI 方向博士生，培养路径强调「${BZA.triad}」。`;
-  
-  if (state.papersPublished > 5) {
-    bio += " 已经是领域内公认的学术新星，各大顶会审稿人的常客。";
-  } else if (state.papersPublished > 2) {
-    bio += " 已经在领域内小有名气，正在稳步积累影响力。";
-  } else if (state.papersPublished > 0) {
-    bio += ` 目前已发表 ${state.papersPublished} 篇论文，初露锋芒。`;
-  } else {
-    bio += " 还在为第一篇顶会论文而奋斗，每天都在与 DDL 赛跑。";
-  }
-
-  if (state.sanity < 20) {
-    bio += " 看起来极度疲惫，眼神涣散，似乎随时都会在实验室晕倒。";
-  } else if (state.sanity < 50) {
-    bio += " 精神状态略显紧绷，咖啡和红牛是他的生命线。";
-  } else {
-    bio += " 精神饱满，对科研充满热情，甚至觉得加班是一种享受。";
-  }
-
-  if (state.misconduct > 60) {
-    bio += " 正在学术道德的边缘疯狂试探，名声岌岌可危。";
-  } else if (state.misconduct > 30) {
-    bio += " 偶尔会为了结果漂亮而微调数据，如履薄冰。";
-  }
-
-  if (state.year >= 4) {
-    bio += " 高年级了，对项目制培养的节奏和中关村这片科研圈的「卷法」早已心中有数。";
-  }
-
-  return bio;
+  return studentProfileToPlainText(buildStudentProfile(state));
 }
 
 export async function generateMomentContent(state: GameState, eventTitle?: string): Promise<{ content: string; author: string; comments: { author: string; content: string }[] }> {

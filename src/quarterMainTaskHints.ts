@@ -36,7 +36,7 @@ const POOLS: Record<MainTaskCategory, readonly string[]> = {
     `你离「准博士生」还差一纸课表：主线是<strong class="${B}">修满学分</strong>，顺便在课程里薅点进度与声望，不亏。`,
   ],
   COURSE_ADVANCE: [
-    `学分和导师都就位了，本阶段主线是把<strong class="${B}">阶段进度</strong>稳步推到阈值；满了就能进入开题准备，别把「再摸一季」写成习惯。`,
+    `学分和导师都就位了，本阶段主线是把<strong class="${B}">阶段进度</strong>稳步推上去；<strong class="${B}">进度走满</strong>就能进入开题准备，别把「再摸一季」写成习惯。`,
     `你已经站在课程阶段的出口附近：多跑<strong class="${B}">日常与科研行动</strong>填进度，下一道门才是项目制真正的热身。`,
     `系统允许你同时焦虑三件事，但优先级只有一件——<strong class="${B}">把当前阶段进度跑满</strong>，然后体面地跟课表说再见。`,
     `课修完了、组也进了，剩下就是把培养条<strong class="${B}">涂满</strong>。别在 99% 磨蹭成史诗，下一季结算在看你。`,
@@ -89,12 +89,12 @@ const POOLS: Record<MainTaskCategory, readonly string[]> = {
   DEFENSE_NEED_STATS: [
     `答辩委员会不看鸡汤，看<strong class="${B}">学术声望与已发表论文数</strong>。红线没踩够就别幻想主席宣布「优秀」——该补的砖一块都少不了。`,
     `你离「可以毕业」还差<strong class="${B}">声望或论文的硬性组合</strong>：去科研里补产出，去日常里补人缘，别跟系统讨价还价。`,
-    `毕业答辩不是剧情杀，是<strong class="${B}">数值达标后的结算</strong>。先把论文与声望刷够，再谈最后一格进度。`,
+    `毕业答辩不是剧情杀，<strong class="${B}">声望与论文等条件</strong>先凑齐，才有资格谈最后一程培养进度。`,
     `当前主线：把<strong class="${B}">答辩门槛</strong>补齐。卡在 99% 通常不是运气，是引用与论文还没到位。`,
   ],
   DEFENSE_PUSH: [
     `硬性指标已达标，接下来只要把<strong class="${B}">阶段进度推到终点</strong>，下一季结算就有机会正面撞线毕业——记得给自己留点睡觉时间。`,
-    `你已经摸到学位帽边沿：主线是<strong class="${B}">进度满条触发答辩通过</strong>。这季少折腾支线，多堆有效行动。`,
+    `你已经摸到学位帽边沿：接下来把<strong class="${B}">本阶段培养进度一路走到头</strong>，就有机会迎来答辩与收官。这季少折腾支线，多堆有效行动。`,
     `系统允许你幻想毕业典礼了，前提是<strong class="${B}">本阶段进度跑满</strong>。别在终点线前绊在摸鱼上。`,
     `最后一格没有「下次一定」：把<strong class="${B}">培养条拉满</strong>，学院才会把「顺利毕业」写进你的档案。`,
   ],

@@ -1,6 +1,9 @@
 import { Action, AdvisorType, GameState, Asset } from './types';
 import { BZA_WELCOME_LOG } from './schoolBranding';
 
+/** 每季度可用于行动、拜访、互动、自我调节等的总次数上限 */
+export const ACTIONS_PER_QUARTER = 20;
+
 export const INITIAL_STATE: GameState = {
   quarter: 1,
   year: 1,
@@ -36,7 +39,7 @@ export const INITIAL_STATE: GameState = {
   walksThisQuarter: 0,
   actionsThisQuarter: 0,
   actionsSinceExternalMoment: 0,
-  externalMomentThreshold: 3 + Math.floor(Math.random() * 8),
+  externalMomentThreshold: 4 + Math.floor(Math.random() * 8),
   interactionsThisQuarter: [],
   assets: [],
   logs: [{ quarter: 1, message: BZA_WELCOME_LOG, type: 'INFO' }],
@@ -73,7 +76,7 @@ export const ADVISOR_INTERACTIONS = [
       '汇报过程中导师指出了你忽略的一个关键细节，让你受益匪浅。',
       '导师听完后和你探讨了该方向的未来趋势，你的科研视野得到了拓宽。'
     ],
-    effect: { sanity: 5, progress: 2, energy: -10 }
+    effect: { sanity: 5, progress: 6, energy: -10 }
   },
   {
     id: 'adv_project_discuss',
@@ -84,7 +87,7 @@ export const ADVISOR_INTERACTIONS = [
       '针对你遇到的 Bug，导师给出了几个非常有建设性的调试建议。',
       '讨论非常高效，导师决定为你增加一些算力资源支持。'
     ],
-    effect: { progress: 3, advisorFavor: 5, energy: -15 }
+    effect: { progress: 9, advisorFavor: 5, energy: -15 }
   },
   {
     id: 'adv_career_talk',
@@ -128,7 +131,7 @@ export const ADVISOR_INTERACTIONS = [
       '导师当场画白板帮你理清假设，全组都对你的方向有了新认识。',
       '汇报超时了十分钟，但导师说「这个点值得深挖」。'
     ],
-    effect: { progress: 2, reputation: 3, energy: -18, sanity: -5 }
+    effect: { progress: 6, reputation: 3, energy: -18, sanity: -5 }
   },
   {
     id: 'adv_gpu_request',
@@ -139,7 +142,7 @@ export const ADVISOR_INTERACTIONS = [
       '导师让你先复现 baseline 再谈加卡，你连夜把对比实验补齐。',
       '导师把自己的卡号借你插队，你感动得差点当场写进致谢。'
     ],
-    effect: { gpuCredits: 400, advisorFavor: 3, energy: -12, progress: 2 }
+    effect: { gpuCredits: 400, advisorFavor: 3, energy: -12, progress: 6 }
   }
 ];
 
@@ -164,7 +167,7 @@ export const LABMATE_INTERACTIONS = [
       '你们一起重构了核心模块，代码运行效率大幅提升。',
       '在交流中你学到了同门的调试神技。'
     ],
-    effect: { progress: 2, labMateFavor: 10, energy: -10 }
+    effect: { progress: 6, labMateFavor: 10, energy: -10 }
   },
   {
     id: 'mate_hotpot',
@@ -186,7 +189,7 @@ export const LABMATE_INTERACTIONS = [
       '你们针对论文中的创新点展开了激烈的辩论，碰撞出了火花。',
       '这种互助学习模式让你们的科研进度都加快了。'
     ],
-    effect: { progress: 2, sanity: 5, energy: -10 }
+    effect: { progress: 6, sanity: 5, energy: -10 }
   },
   {
     id: 'mate_game_night',
@@ -219,7 +222,7 @@ export const LABMATE_INTERACTIONS = [
       '通过模拟，你对自己的研究成果有了更自信的表达方式。',
       '你们互相分享了面试技巧和避坑指南。'
     ],
-    effect: { reputation: 5, progress: 1, energy: -15 }
+    effect: { reputation: 5, progress: 3, energy: -15 }
   },
   {
     id: 'mate_data_cleaning',
@@ -230,7 +233,7 @@ export const LABMATE_INTERACTIONS = [
       '你们开发了一套自动清洗脚本，一劳永逸。',
       '枯燥的工作因为有了同门的陪伴而显得不再难熬。'
     ],
-    effect: { progress: 3, labMateFavor: 5, energy: -20 }
+    effect: { progress: 9, labMateFavor: 5, energy: -20 }
   },
   {
     id: 'mate_badminton',
@@ -263,7 +266,7 @@ export const LABMATE_INTERACTIONS = [
       '茶歇时大家围着白板争论，你第一次觉得自己也在圈里。',
       '讲座结束师兄把 slides 发你，文件名还是「最终版_真的最终」。'
     ],
-    effect: { progress: 2, sanity: 6, energy: -12, labMateFavor: 8 }
+    effect: { progress: 6, sanity: 6, energy: -12, labMateFavor: 8 }
   },
   {
     id: 'mate_lab_bbq',
@@ -285,7 +288,7 @@ export const LABMATE_INTERACTIONS = [
       '争论到嗓子哑，最后一致同意「先跑通再讲故事」。',
       '师姐一句「这个可以当 ablation」让你眼睛发亮。'
     ],
-    effect: { progress: 3, paperWritingProgress: 3, energy: -14, labMateFavor: 10 }
+    effect: { progress: 9, paperWritingProgress: 3, energy: -14, labMateFavor: 10 }
   }
 ];
 
@@ -430,7 +433,7 @@ export const ACTIONS: Action[] = [
     healthCost: 5,
     fundingCost: 200,
     gpuCost: 0,
-    progressGain: 2,
+    progressGain: 6,
     favorGain: 0,
     fundingGain: 0,
     creditGain: 6,
@@ -451,7 +454,7 @@ export const ACTIONS: Action[] = [
     healthCost: 0,
     fundingCost: 100,
     gpuCost: 0,
-    progressGain: 1,
+    progressGain: 3,
     favorGain: 2,
     fundingGain: 0,
   },
@@ -494,7 +497,7 @@ export const ACTIONS: Action[] = [
     healthCost: 2,
     fundingCost: 0,
     gpuCost: 0,
-    progressGain: 2,
+    progressGain: 6,
     favorGain: 1,
     fundingGain: 0,
   },
@@ -514,7 +517,7 @@ export const ACTIONS: Action[] = [
     healthCost: 5,
     fundingCost: 0,
     gpuCost: 300,
-    progressGain: 3,
+    progressGain: 9,
     favorGain: 2,
     fundingGain: 0,
   },
@@ -534,7 +537,7 @@ export const ACTIONS: Action[] = [
     healthCost: 10,
     fundingCost: 0,
     gpuCost: 0,
-    progressGain: 3,
+    progressGain: 9,
     favorGain: 5,
     fundingGain: 0,
   },
@@ -554,7 +557,7 @@ export const ACTIONS: Action[] = [
     healthCost: 10,
     fundingCost: 1500,
     gpuCost: 0,
-    progressGain: 2,
+    progressGain: 6,
     favorGain: 10,
     fundingGain: 0,
   },
@@ -597,7 +600,7 @@ export const ACTIONS: Action[] = [
     healthCost: 15,
     fundingCost: 0,
     gpuCost: 0,
-    progressGain: 3,
+    progressGain: 9,
     favorGain: 10,
     fundingGain: 0,
     labMateFavorGain: 5,
@@ -618,7 +621,7 @@ export const ACTIONS: Action[] = [
     healthCost: 0,
     fundingCost: 100,
     gpuCost: 0,
-    progressGain: 2,
+    progressGain: 6,
     favorGain: 15,
     fundingGain: 0,
   },
