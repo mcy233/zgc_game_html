@@ -62,6 +62,12 @@ export interface GameState {
   quarter: number; // 1-16 (4 years * 4 quarters)
   year: number;
   season: '秋季' | '冬季' | '春季' | '夏季';
+  /** 玩家角色中文姓名，开局随机生成并随存档保留 */
+  playerName: string;
+  /** 已解锁的个人主页称号 id（见 profileHonors） */
+  unlockedHonors: string[];
+  /** 研究兴趣文案组索引 0..4，开局随机，本局固定 */
+  researchInterestGroup: number;
   
   // Stats (0-100)
   sanity: number;

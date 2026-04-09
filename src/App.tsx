@@ -68,6 +68,9 @@ import { POTENTIAL_ADVISOR_VISIT_OUTCOMES } from './advisorVisitContent';
 import { pickLeaveLine, pickJoinLine, applySeniorFarewellGifts } from './labTurnover';
 import { generateAdvisorFeedback, generateRandomEvent, generateMomentContent, generateExternalMoment } from './services/geminiService';
 import { buildStudentProfile } from './studentProfileContent';
+import { generateRandomPlayerName } from './playerName';
+import { scanNewHonorIds, PROFILE_HONOR_BY_ID } from './profileHonors';
+import { RESEARCH_INTEREST_GROUP_COUNT } from './researchInterestGroups';
 import { AssetThumb, AvatarThumb, advisorAvatarKey, labAvatarKey } from './SpriteThumbs';
 import { BZA, BZA_GAME_TITLE } from './schoolBranding';
 import { pickRandomQuarterChoice } from './quarterChoiceEvents';
@@ -361,7 +364,11 @@ function computePaperReview(submitted: number, hasAdvisor: boolean): PaperReview
 }
 
 export default function App() {
-  const [state, setState] = useState<GameState>(INITIAL_STATE);
+  const [state, setState] = useState<GameState>(() => ({
+    ...INITIAL_STATE,
+    playerName: generateRandomPlayerName(),
+    researchInterestGroup: Math.floor(Math.random() * RESEARCH_INTEREST_GROUP_COUNT),
+  }));
   const [activeTab, setActiveTab] = useState<Tab>('HOME');
   const [rightTab, setRightTab] = useState<RightTab>('LOGS');
   const [layoutZone, setLayoutZone] = useState<LayoutZone>('MAIN');
@@ -404,6 +411,10 @@ export default function App() {
   const [tutorialIndex, setTutorialIndex] = useState(0);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
 
+  const honorPopupQueueRef = useRef<{ popupTitle: string; unlockBody: string }[]>([]);
+  const [honorPopup, setHonorPopup] = useState<{ popupTitle: string; unlockBody: string } | null>(null);
+  const prevUnlockedHonorsRef = useRef<string[]>([]);
+
   const tutorialSteps = useMemo(
     () => TUTORIAL_STEPS.filter((s) => s.id !== 'advisor' || state.hasAdvisor),
     [state.hasAdvisor]
@@ -426,8 +437,48 @@ export default function App() {
       state.misconduct,
       state.advisorName,
       state.season,
+      state.unlockedHonors,
+      state.researchInterestGroup,
     ]
   );
+
+  useEffect(() => {
+    setState((prev) => {
+      const ids = scanNewHonorIds(prev);
+      if (ids.length === 0) return prev;
+      return { ...prev, unlockedHonors: [...new Set([...prev.unlockedHonors, ...ids])] };
+    });
+  }, [
+    state.quarter,
+    state.year,
+    state.milestone,
+    state.papersPublished,
+    state.citations,
+    state.submittedPapers,
+    state.hasAdvisor,
+    state.credits,
+    state.reputation,
+    state.gpuCredits,
+    state.sanity,
+    state.misconduct,
+  ]);
+
+  useEffect(() => {
+    const prev = prevUnlockedHonorsRef.current;
+    const added = state.unlockedHonors.filter((id) => !prev.includes(id));
+    prevUnlockedHonorsRef.current = state.unlockedHonors;
+    if (added.length === 0) return;
+    for (const id of added) {
+      const h = PROFILE_HONOR_BY_ID[id];
+      if (h) honorPopupQueueRef.current.push({ popupTitle: h.popupTitle, unlockBody: h.unlockBody });
+    }
+    setHonorPopup((p) => p ?? honorPopupQueueRef.current.shift() ?? null);
+  }, [state.unlockedHonors]);
+
+  const dismissHonorPopup = useCallback(() => {
+    const next = honorPopupQueueRef.current.shift();
+    setHonorPopup(next ?? null);
+  }, []);
 
   useEffect(() => {
     try {
@@ -1891,9 +1942,15 @@ export default function App() {
                   <div className="flex flex-col sm:flex-row sm:items-start gap-6">
                     <AvatarThumb spriteKey="player" frameClassName="w-24 h-24 border-2 border-black/5 shadow-inner shrink-0" />
                     <div className="min-w-0 flex-1">
-                      <h3 className="text-xl sm:text-2xl font-bold leading-snug">{studentProfile.headline}</h3>
-                      <p className="text-sm text-gray-500 mt-1">
-                        第 {state.year} 学年 · {state.season} · {state.milestone} · {BZA.focus}
+                      <p className="text-[10px] font-mono uppercase tracking-wider text-violet-700/80 mb-0.5">
+                        {studentProfile.headline}
+                      </p>
+                      <h3 className="text-xl sm:text-2xl font-bold leading-snug text-violet-950">
+                        {studentProfile.playerName}
+                      </h3>
+                      <p className="text-sm text-gray-600 mt-1 leading-relaxed">{studentProfile.roleLine}</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        第 {state.year} 学年 · {state.season}
                       </p>
                       <div className="mt-3 flex flex-col gap-1 text-[11px] text-gray-500 font-mono">
                         <span className="flex items-center gap-2 min-w-0">
@@ -1909,31 +1966,30 @@ export default function App() {
                   </div>
 
                   <div className="space-y-5">
-                    <h4 className="text-xs font-mono uppercase opacity-40 border-b border-black/5 pb-2">个人简介</h4>
-                    <p className="text-base sm:text-lg leading-relaxed text-gray-800">{studentProfile.intro}</p>
+                    <h4 className="text-xs font-mono uppercase opacity-40 border-b border-black/5 pb-2">简介</h4>
+                    <p className="text-base sm:text-lg leading-relaxed text-gray-800">{studentProfile.bioBlurb}</p>
 
-                    <div className="grid md:grid-cols-2 gap-4">
-                      <div className="rounded-2xl bg-slate-50 border border-black/5 border-l-4 border-l-blue-500 p-4">
-                        <p className="text-[10px] font-mono uppercase tracking-wider text-blue-700/90 mb-2">研究兴趣与工作</p>
-                        <ul className="text-sm text-gray-700 space-y-1.5 list-disc pl-4 leading-relaxed">
-                          {studentProfile.researchBullets.map((line, i) => (
-                            <li key={i}>{line}</li>
-                          ))}
-                        </ul>
-                      </div>
-                      <div className="rounded-2xl bg-slate-50 border border-black/5 border-l-4 border-l-amber-500 p-4">
-                        <p className="text-[10px] font-mono uppercase tracking-wider text-amber-800/90 mb-2">课题组与合作</p>
-                        <ul className="text-sm text-gray-700 space-y-1.5 list-disc pl-4 leading-relaxed">
-                          {studentProfile.labDiaryBullets.map((line, i) => (
-                            <li key={i}>{line}</li>
-                          ))}
-                        </ul>
-                      </div>
+                    <div>
+                      <h4 className="text-xs font-mono uppercase opacity-40 border-b border-black/5 pb-2 mb-3">教育背景</h4>
+                      <ul className="text-sm text-gray-700 space-y-2 list-disc pl-5 leading-relaxed marker:text-violet-400">
+                        {studentProfile.educationLines.map((line, i) => (
+                          <li key={i}>{line}</li>
+                        ))}
+                      </ul>
                     </div>
 
-                    <div className="rounded-2xl bg-black/[0.03] border border-black/5 p-4">
-                      <p className="text-[10px] font-mono uppercase opacity-40 mb-2">主要成就</p>
-                      <p className="text-sm text-gray-800 leading-relaxed">{studentProfile.achievements}</p>
+                    <div className="rounded-2xl bg-slate-50 border border-black/5 border-l-4 border-l-blue-500 p-4">
+                      <p className="text-[10px] font-mono uppercase tracking-wider text-blue-700/90 mb-2">研究兴趣</p>
+                      <ul className="text-sm text-gray-700 space-y-1.5 list-disc pl-4 leading-relaxed">
+                        {studentProfile.researchBullets.map((line, i) => (
+                          <li key={i}>{line}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="rounded-2xl bg-black/[0.03] border border-black/5 border-t-4 border-t-slate-400 p-4 space-y-3">
+                      <p className="text-[10px] font-mono uppercase opacity-50 mb-0">论文与投稿</p>
+                      <p className="text-sm text-gray-800 leading-relaxed">{studentProfile.publicationsText}</p>
                     </div>
 
                     <div className="relative py-4 px-2">
@@ -1949,7 +2005,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4">
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
                     <div className="bg-black/5 p-4 rounded-2xl text-center">
                       <p className="text-[10px] font-mono uppercase opacity-40">已发表</p>
                       <p className="text-2xl font-bold">{state.papersPublished}</p>
@@ -1957,6 +2013,10 @@ export default function App() {
                     <div className="bg-black/5 p-4 rounded-2xl text-center">
                       <p className="text-[10px] font-mono uppercase opacity-40">引用量</p>
                       <p className="text-2xl font-bold">{state.citations}</p>
+                    </div>
+                    <div className="bg-black/5 p-4 rounded-2xl text-center">
+                      <p className="text-[10px] font-mono uppercase opacity-40">投稿中</p>
+                      <p className="text-2xl font-bold">{state.submittedPapers}</p>
                     </div>
                     <div className="bg-black/5 p-4 rounded-2xl text-center">
                       <p className="text-[10px] font-mono uppercase opacity-40">学分</p>
@@ -2606,6 +2666,36 @@ export default function App() {
                 className="w-full py-5 bg-black text-white rounded-2xl font-bold text-lg hover:bg-gray-800 transition-colors"
               >
                 重新开始
+              </button>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      <AnimatePresence>
+        {honorPopup && (
+          <div className="fixed inset-0 z-[58] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              key={honorPopup.popupTitle}
+              initial={{ scale: 0.92, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.92, opacity: 0 }}
+              className="bg-white p-8 rounded-3xl max-w-md w-full shadow-2xl flex flex-col gap-5 border border-violet-100"
+            >
+              <div className="flex items-start gap-4">
+                <div className="shrink-0 w-12 h-12 rounded-2xl bg-violet-100 flex items-center justify-center text-violet-700">
+                  <Trophy size={26} />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-lg font-bold text-gray-900 leading-snug">{honorPopup.popupTitle}</h3>
+                </div>
+              </div>
+              <p className="text-sm text-gray-600 leading-relaxed">{honorPopup.unlockBody}</p>
+              <button
+                type="button"
+                onClick={dismissHonorPopup}
+                className="w-full py-3.5 rounded-2xl font-bold bg-violet-600 text-white hover:bg-violet-700 transition-colors"
+              >
+                笑纳了
               </button>
             </motion.div>
           </div>
