@@ -102,7 +102,7 @@ const StatBar = ({ icon: Icon, label, value, color, max = 100, suffix = "" }: { 
 );
 
 type Tab = 'HOME' | 'DAILY' | 'RESEARCH' | 'TEAM' | 'ASSETS';
-type RightTab = 'LOGS' | 'MOMENTS';
+type RightTab = 'LOGS' | 'MOMENTS' | 'HONORS';
 /** 竖屏 / 窄屏下底栏切换的三大分区 */
 type LayoutZone = 'ARCHIVE' | 'MAIN' | 'FEED';
 
@@ -372,6 +372,7 @@ export default function App() {
       playerName: id.playerName,
       playerContactEmail: id.playerContactEmail,
       playerOfficeRoom: id.playerOfficeRoom,
+      signatureQuoteSeed: Math.floor(Math.random() * 0xffffffff),
       researchInterestGroup: Math.floor(Math.random() * RESEARCH_INTEREST_GROUP_COUNT),
     };
   });
@@ -419,7 +420,7 @@ export default function App() {
 
   const honorPopupQueueRef = useRef<{ popupTitle: string; unlockBody: string }[]>([]);
   const [honorPopup, setHonorPopup] = useState<{ popupTitle: string; unlockBody: string } | null>(null);
-  const prevUnlockedHonorsRef = useRef<string[]>([]);
+  const prevUnlockedHonorsRef = useRef<string[]>([...INITIAL_STATE.unlockedHonors]);
   const [honorHeadlineOpen, setHonorHeadlineOpen] = useState(false);
   const honorHeadlineWrapRef = useRef<HTMLDivElement>(null);
 
@@ -2013,7 +2014,7 @@ export default function App() {
                                     state.honorHomeDisplayMode === 'latest' ? 'bg-violet-50 font-bold text-violet-900' : 'text-gray-700'
                                   }`}
                                 >
-                                  跟随最新解锁
+                                  恢复默认展示
                                 </button>
                                 <div className="border-t border-black/5 my-0.5" />
                                 {unlockedHonorsSorted.map((h) => (
@@ -2103,7 +2104,7 @@ export default function App() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                  <div className="grid grid-cols-3 gap-3 sm:gap-4">
                     <div className="bg-black/5 p-4 rounded-2xl text-center">
                       <p className="text-[10px] font-mono uppercase opacity-40">已发表</p>
                       <p className="text-2xl font-bold">{state.papersPublished}</p>
@@ -2115,10 +2116,6 @@ export default function App() {
                     <div className="bg-black/5 p-4 rounded-2xl text-center">
                       <p className="text-[10px] font-mono uppercase opacity-40">投稿中</p>
                       <p className="text-2xl font-bold">{state.submittedPapers}</p>
-                    </div>
-                    <div className="bg-black/5 p-4 rounded-2xl text-center">
-                      <p className="text-[10px] font-mono uppercase opacity-40">学分</p>
-                      <p className="text-2xl font-bold">{state.credits}/30</p>
                     </div>
                   </div>
                 </motion.div>
@@ -2354,27 +2351,7 @@ export default function App() {
               <span className="inline-flex h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white shrink-0" title="朋友圈有新动态" />
             )}
           </p>
-          {unlockedHonorsSorted.length > 0 && (
-            <div className="bg-white p-4 rounded-2xl border border-violet-100 shadow-sm shrink-0">
-              <p className="text-[10px] font-mono uppercase tracking-wider text-violet-700/85 mb-2 flex items-center gap-2">
-                <Trophy size={12} className="opacity-70" />
-                荣誉称号
-              </p>
-              <ul className="flex flex-col gap-2 max-h-52 overflow-y-auto pr-1 scrollbar-hide">
-                {unlockedHonorsSorted.map((h) => (
-                  <li
-                    key={h.id}
-                    className="rounded-xl border border-black/5 bg-violet-50/40 px-3 py-2 text-left"
-                  >
-                    <p className="text-xs font-bold text-violet-950 leading-snug">{h.headlineTitle}</p>
-                    <p className="text-[10px] text-gray-600 mt-1 leading-relaxed line-clamp-2">{h.unlockBody}</p>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          <div className="flex bg-white p-1 rounded-xl border border-black/5 shadow-sm shrink-0">
+          <div className="flex bg-white p-1 rounded-xl border border-black/5 shadow-sm shrink-0 gap-0.5">
             <button 
               onClick={() => setRightTab('LOGS')}
               className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${rightTab === 'LOGS' ? 'bg-black text-white' : 'text-gray-400'}`}
@@ -2388,8 +2365,15 @@ export default function App() {
             >
               朋友圈
               {hasUnreadMoments && (
-                <span className="absolute top-1.5 right-2 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white pointer-events-none" aria-hidden />
+                <span className="absolute top-1.5 right-1.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white pointer-events-none" aria-hidden />
               )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setRightTab('HONORS')}
+              className={`flex-1 py-2 text-[10px] font-bold rounded-lg transition-all ${rightTab === 'HONORS' ? 'bg-black text-white' : 'text-gray-400'}`}
+            >
+              荣誉称号
             </button>
           </div>
 
@@ -2426,7 +2410,7 @@ export default function App() {
                       </motion.div>
                     ))}
                   </motion.div>
-                ) : (
+                ) : rightTab === 'MOMENTS' ? (
                   <motion.div 
                     key="moments-list"
                     initial={{ opacity: 0 }}
@@ -2478,6 +2462,33 @@ export default function App() {
                         </div>
                       </motion.div>
                     ))}
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="honors-list"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex flex-col gap-3"
+                  >
+                    {unlockedHonorsSorted.length === 0 ? (
+                      <div className="text-center py-10 opacity-40 flex flex-col items-center gap-2">
+                        <Trophy size={32} className="opacity-50" />
+                        <p className="text-xs text-gray-600 px-2">暂无已解锁称号，推进培养进度后将在此展示。</p>
+                      </div>
+                    ) : (
+                      <ul className="flex flex-col gap-2">
+                        {unlockedHonorsSorted.map((h) => (
+                          <li
+                            key={h.id}
+                            className="rounded-xl border border-black/5 bg-violet-50/40 px-3 py-2 text-left"
+                          >
+                            <p className="text-xs font-bold text-violet-950 leading-snug">{h.headlineTitle}</p>
+                            <p className="text-[10px] text-gray-600 mt-1 leading-relaxed">{h.unlockBody}</p>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>

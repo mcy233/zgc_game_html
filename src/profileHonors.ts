@@ -170,6 +170,15 @@ const H: ProfileHonorDef[] = [
       '理智降到 28 及以下。你的大脑已进入「建议关机散热」模式。此称号表彰你在高压下仍坚持推进进度，同时强烈建议你游戏里摸鱼、散步、睡觉，现实里同理。',
     condition: (s) => s.sanity <= 28,
   },
+  {
+    id: 'rookie_fresh',
+    priority: 99,
+    headlineTitle: '新生小白（初来乍到）',
+    popupTitle: '开局称号：新生小白',
+    unlockBody:
+      '学籍刚落、工位还在认路阶段。培养方案像一本厚说明书，你像刚拆封的玩家——此称号记录你「还没被项目制打磨过」的珍贵时刻，可在首页与其他已解锁称号切换展示。',
+    condition: (_s) => true,
+  },
 ];
 
 /** 按 priority 升序，便于展示时取最小 priority */
