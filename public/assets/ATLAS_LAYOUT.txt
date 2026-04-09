@@ -1,0 +1,30 @@
+雪碧图排版说明（供 AI 出图或 PS 切片）
+=====================================
+
+【与代码同步】程序内尺寸见 src/constants.ts：
+  ASSET_ATLAS_CONFIG.pixelWidth / pixelHeight
+  AVATAR_ATLAS_CONFIG.pixelWidth / pixelHeight
+换图后请用脚本读 PNG IHDR 更新上述常量，并确认列行数与顺序一致。
+
+当前仓库实测（PNG IHDR）：
+  asset_atlas.png   → 1376 × 768 像素，4 列 × 2 行，单格 344 × 384
+  avatar_atlas.png → 1200 × 896 像素，4 列 × 3 行，单格 300 × (896/3)
+
+1) asset_atlas.png（道具）
+   - 路径：public/assets/asset_atlas.png
+   - 顺序（行优先，与 ASSETS_LIBRARY 一致）：
+     [0] noise_canceling_headphones   [1] premium_coffee_machine   [2] ergonomic_mouse   [3] cloud_computing_voucher
+     [4] proofreading_service         [5] vitamin_supplements      [6] stress_ball       [7] smart_watch
+
+2) avatar_atlas.png（头像）
+   - 路径：public/assets/avatar_atlas.png
+   - 顺序（行优先）：
+     第 1 行：player | merchant | 师兄 | 师姐
+     第 2 行：师弟 | 师妹 | advisor_MICROMANAGER | advisor_GHOST
+     第 3 行：advisor_SUPPORTIVE | advisor_CELEBRITY | _reserved | _reserved
+
+3) 定位方式
+   - 程序按「整图均匀切格、格内无间隙」用像素缩放对齐；若图中有留白/间隙，需在代码中另加 offset/gap 配置。
+
+4) 兼容
+   - 无雪碧图时资产可退回单文件 /assets/{id}.png；头像显示默认图标。
