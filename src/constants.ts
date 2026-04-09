@@ -501,7 +501,7 @@ export const ACTIONS: Action[] = [
       '盯着公式看了半小时，感觉它们在嘲笑你的智商。'
     ],
     category: 'RESEARCH',
-    energyCost: 25,
+    energyCost: 20,
     sanityCost: 5,
     healthCost: 2,
     fundingCost: 0,
@@ -521,7 +521,7 @@ export const ACTIONS: Action[] = [
       '服务器风扇的轰鸣声是你听过最动听的摇篮曲。'
     ],
     category: 'RESEARCH',
-    energyCost: 35,
+    energyCost: 15,
     sanityCost: 10,
     healthCost: 5,
     fundingCost: 0,
@@ -541,7 +541,7 @@ export const ACTIONS: Action[] = [
       '凌晨三点的实验室，只有你和你的论文在互相折磨。'
     ],
     category: 'RESEARCH',
-    energyCost: 40,
+    energyCost: 35,
     sanityCost: 25,
     healthCost: 10,
     fundingCost: 0,
@@ -561,7 +561,7 @@ export const ACTIONS: Action[] = [
       '和同行大佬交换了名片，感觉自己已经打入了学术圈内部。'
     ],
     category: 'RESEARCH',
-    energyCost: 50,
+    energyCost: 40,
     sanityCost: -10,
     healthCost: 10,
     fundingCost: 1500,
@@ -583,7 +583,7 @@ export const ACTIONS: Action[] = [
       '组织了一场剧本杀，发现平时木讷的师弟竟然是个戏精。'
     ],
     category: 'TEAM',
-    energyCost: 30,
+    energyCost: 15,
     sanityCost: -20,
     healthCost: 0,
     fundingCost: 1000,
@@ -604,7 +604,7 @@ export const ACTIONS: Action[] = [
       '虽然很累，但看到大家都在努力，你也不好意思先走。'
     ],
     category: 'TEAM',
-    energyCost: 50,
+    energyCost: 35,
     sanityCost: 20,
     healthCost: 15,
     fundingCost: 0,

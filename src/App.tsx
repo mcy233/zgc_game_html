@@ -1436,7 +1436,7 @@ export default function App() {
       return;
     }
     const cost = 500;
-    const energyCost = 30;
+    const energyCost = 10;
     if (state.funding < cost || state.energy < energyCost) {
       addLog("资金或精力不足以支持外出游玩。", "WARNING");
       return;
@@ -1484,7 +1484,7 @@ export default function App() {
       setCurrentEvent({
         title: "外出游玩",
         description: mainDesc + extraDesc,
-        effect: { funding: -500, energy: -30, sanity: 25, health: 15, progress: extraDesc ? 6 : 0 }
+        effect: { funding: -500, energy: -energyCost, sanity: 25, health: 15, progress: extraDesc ? 6 : 0 }
       });
       setIsEventModalOpen(true);
 
