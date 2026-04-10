@@ -14,7 +14,8 @@ export type Milestone =
   | '无导师退学'
   | '开题拖延退学'
   | '中期拖延退学'
-  | '延毕退学';
+  | '延毕退学'
+  | '培养环节退学';
 
 /** 答辩通过后的结局分档（论文数 + 学术声望） */
 export type GraduationHonor = 'MYTHIC' | 'LEGEND' | 'STAR' | 'MERIT' | 'PASS' | 'SCRAPE';
@@ -26,6 +27,8 @@ export interface LabMate {
   year: number; // PhD Year (1-4)
   status: string;
   favor: number;
+  /** 最近一次与玩家互动的季度编号；与当前季不同则季末可能衰减好感 */
+  lastInteractedQuarter?: number;
 }
 
 /** 他人朋友圈动态来源（用于点赞文案与样式） */
@@ -131,7 +134,22 @@ export interface GameState {
   /** 当前周期触发他人动态的阈值（随机 3~10，达标后重置并重新随机） */
   externalMomentThreshold: number;
   interactionsThisQuarter: string[]; // 本季度已互动的成员ID（包含 'advisor'）
-  
+
+  /** 按季度统计「校园与讲坛」完成次数（下标 = 季度号 - 1） */
+  collegeActivityByQuarter: number[];
+  /** 按季度统计文献调研次数 */
+  literatureReviewByQuarter: number[];
+  /** 讲坛学期未达标时，累计到下一学期的补足次数 */
+  seminarCarryoverDeficit: number;
+  /** 讲坛学期考核：0 正常；1 表示已发生过一次未达标（再犯则退学） */
+  seminarComplianceStrikes: number;
+  /** 进入新季度时若刚触发讲坛警告，在季度总结顶栏展示 */
+  semesterComplianceAlert?: string;
+  /** 上一季度是否与导师有过互动（拜访/随机互动/团队类行动） */
+  advisorLastInteractedQuarter: number;
+  /** 文献支撑不足时，本季累计点击「跑实验/写论文/出差」次数（文献达标后清零） */
+  lowLitResearchClickCount: number;
+
   // Assets
   assets: Asset[];
   pendingAssetOffer?: Asset; // The asset offered by the vendor this quarter

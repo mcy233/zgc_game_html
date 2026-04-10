@@ -1,6 +1,6 @@
 import type { AdvisorType } from './types';
 
-/** 未拜师时「拜访导师」的随机叙事 + 在基础拜访之外的额外数值（基础：-$200、-20 精力、+15×favorGainRate 印象） */
+/** 未拜师时「拜访导师」的随机叙事 + 在基础消耗之外的额外数值（基础：-18 精力、+15×favorGainRate 意向好感） */
 export type PotentialAdvisorVisitOutcome = {
   text: string;
   bonus?: {

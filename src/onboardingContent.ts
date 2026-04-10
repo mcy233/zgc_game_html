@@ -2,7 +2,7 @@ import { ACTIONS_PER_QUARTER } from './constants';
 
 /** 与 App.tsx 中 Tab / RightTab 一致 */
 export type OnboardingTab = 'HOME' | 'DAILY' | 'RESEARCH' | 'TEAM' | 'ASSETS';
-export type OnboardingRightTab = 'LOGS' | 'MOMENTS';
+export type OnboardingRightTab = 'LOGS' | 'MOMENTS' | 'HONORS';
 
 const S = 'text-white font-semibold';
 const T = 'text-slate-100 font-semibold';
@@ -46,6 +46,7 @@ export const SURVIVAL_SECTIONS: {
       `<strong class="${S}">学术不端</strong>：<strong class="${S}">学术不端嫌疑达到 100</strong> 将被认定违规，游戏结束。`,
       `<strong class="${S}">无导师</strong>：进入<strong class="${S}">第 2 学年</strong>时仍未加入任何导师团队，按培养规定无法继续注册。`,
       `<strong class="${S}">开题 / 中期超期</strong>：入组后<strong class="${S}">开题准备</strong>阶段超过约 6 个季度未完成开题，或<strong class="${S}">中期考核</strong>阶段超过开题完成后约 8 个季度仍未通过中期，可能被劝退。`,
+      `<strong class="${S}">培养环节（讲坛）</strong>：博士<strong class="${S}">第一、二学年</strong>内，每学期（两个连续季度）须在「日常」中完成足够次数的<strong class="${S}">校园与讲坛</strong>行动；首次未达标会收到培养办警告并结转补足要求，再次未达标将<strong class="${S}">终止培养</strong>。`,
     ],
   },
   {
@@ -62,9 +63,9 @@ export const SURVIVAL_SECTIONS: {
   {
     heading: '四、界面分区（档案 / 主页 / 动态）',
     bullets: [
-      `<strong class="${S}">档案</strong>（左栏 / 底栏「档案」）：个人状态条、阶段与学分、自我调节按钮、拜师后的导师简讯。`,
-      `<strong class="${S}">主页</strong>（中栏 / 底栏「主页」）：<strong class="${S}">首页</strong>看简介与概览；<strong class="${S}">日常</strong>与<strong class="${S}">科研</strong>执行行动（每季度行动次数有上限）；<strong class="${S}">团队</strong>拜访导师与同门；<strong class="${S}">资产</strong>管理与神秘商人推销。`,
-      `<strong class="${S}">动态</strong>（右栏 / 底栏「动态」）：<strong class="${S}">学术日志</strong>记录事件；<strong class="${S}">朋友圈</strong>含自己与他人的动态。<strong class="${S}">有新朋友圈时会出现红点</strong>，记得点开查看与互动。`,
+      `<strong class="${S}">档案</strong>（左栏 / 底栏「档案」）：个人状态条、阶段与学分、自我调节按钮。`,
+      `<strong class="${S}">主页</strong>（中栏 / 底栏「主页」）：<strong class="${S}">首页</strong>看简介与概览；<strong class="${S}">日常</strong>与<strong class="${S}">科研</strong>执行行动（每季度行动次数有上限）；<strong class="${S}">团队</strong>查看导师寄语与好感、与同门互动；<strong class="${S}">资产</strong>管理与神秘商人推销。`,
+      `<strong class="${S}">动态</strong>（右栏 / 底栏「动态」）：可在<strong class="${S}">学术日志、朋友圈、荣誉称号</strong>三个分栏间切换；日志记录事件，朋友圈含自己与他人的动态，荣誉栏展示已解锁称号。<strong class="${S}">有新朋友圈时会出现红点</strong>，记得点开查看与互动。`,
     ],
   },
   {
@@ -80,7 +81,9 @@ export const SURVIVAL_SECTIONS: {
     heading: '六、其他提示',
     bullets: [
       `<strong class="${S}">担任助教</strong>：协助签到、教室设备、作业发布与统计等，可获得资金。`,
-      `<strong class="${S}">校园与讲坛</strong>：参与学院相关活动，可提升<strong class="${S}">阶段进度</strong>与少量声望。`,
+      `<strong class="${S}">校园与讲坛</strong>：参与学院相关活动，可提升<strong class="${S}">阶段进度</strong>与少量声望；前两年每学期（两季度）至少 6 次，详见上文「失败与退学」。`,
+      `<strong class="${S}">文献调研</strong>：虽不显示硬性条，但近两季度文献次数不足时，跑实验、写论文、出差报告等更容易「翻车」（进度变慢、不端嫌疑上升、会场被质疑等）；每两季度累计约 4 次文献调研可保持正常节奏。`,
+      `<strong class="${S}">课题组氛围</strong>：导师与同门好感总和会影响<strong class="${S}">科研与团队类行动</strong>的阶段进度效率；长期不互动好感会下滑。`,
       `界面右上角可通过「？」再次打开本须知或<strong class="${S}">分步导览</strong>。`,
     ],
   },
@@ -95,7 +98,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'header',
     title: '顶栏与季度推进',
-    body: `这里显示当前<strong class="${T}">学年、季节、季度进度</strong>，以及<strong class="${T}">资金、算力</strong>和本季剩余<strong class="${T}">行动次数</strong>。准备好后点击<strong class="${T}">进入下个季度</strong>推进时间线并触发季度结算。`,
+    body: `顶栏左侧是<strong class="${T}">学年、季节、季度</strong>；右上角<strong class="${T}">？</strong>随时打开入学须知与界面导览。<strong class="${T}">资金与算力</strong>在「档案」个人状态卡里查看。<strong class="${T}">季度行动</strong>与<strong class="${T}">进入下个季度</strong>：手机在<strong class="${T}">底栏最右侧</strong>；电脑宽屏在<strong class="${T}">右侧「动态」栏底部</strong>（学术日志/朋友圈卡片下方），右对齐。`,
     highlightId: 'onb-header',
     layoutZone: 'MAIN',
     activeTab: 'HOME',
@@ -103,7 +106,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'stats',
     title: '档案 · 个人状态',
-    body: `左栏「档案」中的<strong class="${T}">理智、健康、精力</strong>是生存线；<strong class="${T}">学术不端嫌疑</strong>过高会直接导致游戏结束。下方还有论文数、声望、阶段进度与学分等。`,
+    body: `左栏「档案」中的<strong class="${T}">理智、健康、精力</strong>是生存线；<strong class="${T}">学术不端嫌疑</strong>过高会直接导致游戏结束。其下是<strong class="${T}">资金与算力</strong>，再往下是论文数、声望、阶段进度与学分等。`,
     highlightId: 'onb-stats-card',
     layoutZone: 'ARCHIVE',
   },
@@ -116,10 +119,11 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   },
   {
     id: 'advisor',
-    title: '档案 · 导师（拜师后）',
-    body: `拜师成功后，导师寄语与<strong class="${T}">好感度</strong>会出现在此。好感会影响部分科研体验；记得在「团队」里每季度互动。`,
-    highlightId: 'onb-advisor',
-    layoutZone: 'ARCHIVE',
+    title: '团队 · 导师（拜师后）',
+    body: `拜师成功后，在<strong class="${T}">团队</strong>页可看到导师卡片：上面有导师的随口几句、<strong class="${T}">好感度</strong>与<strong class="${T}">随机互动</strong>。好感会影响部分科研体验，每季度记得点一次。`,
+    highlightId: 'onb-team-advisor-card',
+    layoutZone: 'MAIN',
+    activeTab: 'TEAM',
   },
   {
     id: 'tabs',
@@ -132,7 +136,7 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
   {
     id: 'home',
     title: '首页 · 个人卡片',
-    body: '这里展示你的培养阶段、简介文案，以及论文、引用、学分等摘要，方便随时掌握「离毕业还有多远」。',
+    body: '这里展示你的培养阶段、简介文案，以及论文与引用等摘要，方便随时掌握「离毕业还有多远」。',
     highlightId: 'onb-home-card',
     layoutZone: 'MAIN',
     activeTab: 'HOME',
@@ -184,6 +188,14 @@ export const TUTORIAL_STEPS: TutorialStep[] = [
     highlightId: 'onb-feed-panel',
     layoutZone: 'FEED',
     rightTab: 'MOMENTS',
+  },
+  {
+    id: 'honors_feed',
+    title: '动态 · 荣誉称号',
+    body: `在「荣誉称号」分栏可查看已解锁称号与说明；与首页顶栏展示的称号同源，解锁越多列表越丰富。`,
+    highlightId: 'onb-feed-panel',
+    layoutZone: 'FEED',
+    rightTab: 'HONORS',
   },
   {
     id: 'done',

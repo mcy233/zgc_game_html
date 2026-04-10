@@ -167,8 +167,8 @@ export function TutorialOverlay({
       return;
     }
     let el = document.getElementById(step.highlightId);
-    if (!el && step.highlightId === 'onb-advisor') {
-      el = document.getElementById('onb-archive-column');
+    if (!el && step.highlightId === 'onb-team-advisor-card') {
+      el = document.getElementById('onb-main-body');
     }
     if (!el) {
       setHole(null);

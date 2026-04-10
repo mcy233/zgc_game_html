@@ -36,6 +36,7 @@ import {
   Mail,
   MapPin,
   ChevronDown,
+  Clock,
 } from 'lucide-react';
 import {
   GameState,
@@ -59,6 +60,7 @@ import {
   ADVISOR_INTERACTIONS,
   LABMATE_INTERACTIONS,
   pickRandomAssetVendorTitle,
+  formatAssetEffectLines,
   WRITE_PAPER_MISCONDUCT_NARRATIVES,
   rollWritePaperMisconductDelta,
   rollLiteraturePaperProgressDelta,
@@ -69,7 +71,7 @@ import { POTENTIAL_ADVISOR_VISIT_OUTCOMES } from './advisorVisitContent';
 import { pickLeaveLine, pickJoinLine, applySeniorFarewellGifts } from './labTurnover';
 import { generateAdvisorFeedback, generateRandomEvent, generateMomentContent, generateExternalMoment } from './services/geminiService';
 import { buildStudentProfile, pickRandomUndergradUniversity } from './studentProfileContent';
-import { buildEmailFromDisplayName, buildRandomOfficeRoom, generatePlayerRunIdentity } from './playerName';
+import { buildEmailFromDisplayName, buildRandomOfficeRoom, generateRandomPlayerName } from './playerName';
 import { scanNewHonorIds, PROFILE_HONOR_BY_ID, listUnlockedHonorsOrdered } from './profileHonors';
 import { RESEARCH_INTEREST_GROUP_COUNT } from './researchInterestGroups';
 import { AssetThumb, AvatarThumb, advisorAvatarKey, labAvatarKey } from './SpriteThumbs';
@@ -83,6 +85,17 @@ import {
   LS_SURVIVAL_KEY,
   LS_TUTORIAL_KEY,
 } from './Onboarding';
+import {
+  SEMINAR_REQUIRED_PER_SEMESTER,
+  getLiteratureSupportFactor,
+  getLabAtmosphereProgressMultiplier,
+  relationMoodLabel,
+  ensureQuarterStatArray,
+  bumpQuarterStat,
+  pickExperimentWeakLiteratureLine,
+  pickColdLabAtmosphereLine,
+} from './gameProgressionRules';
+import { pickInsufficientFundingBlock, pickInsufficientGpuBlock } from './actionSoftBlockCopy';
 
 const StatBar = ({ icon: Icon, label, value, color, max = 100, suffix = "" }: { icon: any, label: string, value: number, color: string, max?: number, suffix?: string }) => (
   <div className="flex flex-col gap-1 w-full">
@@ -249,6 +262,11 @@ function failureGameOverCopy(m: Milestone): { title: string; body: string } {
       return {
         title: '未按时毕业',
         body: '培养年限用尽仍未完成答辩要求。按规定办理延毕或退学，这段在中关村学院的博士马拉松未能冲线。',
+      };
+    case '培养环节退学':
+      return {
+        title: '培养环节未达标',
+        body: '学院核查培养记录：前两年讲坛参与等必修环节再次未满足要求，学籍无法延续。',
       };
     default:
       return {
@@ -772,6 +790,12 @@ export default function App() {
         actionsThisQuarter: 0,
         walksThisQuarter: 0,
         interactionsThisQuarter: [],
+        collegeActivityByQuarter: ensureQuarterStatArray(prev.collegeActivityByQuarter, nextQ),
+        literatureReviewByQuarter: ensureQuarterStatArray(prev.literatureReviewByQuarter, nextQ),
+        seminarCarryoverDeficit: prev.seminarCarryoverDeficit ?? 0,
+        seminarComplianceStrikes: prev.seminarComplianceStrikes ?? 0,
+        advisorLastInteractedQuarter: prev.advisorLastInteractedQuarter ?? 0,
+        semesterComplianceAlert: undefined,
         submittedPapers: 0, // Reset after review
         papersPublished: prev.papersPublished + pb.papersPublished,
         paperPublicationQuarters: pubQ,
@@ -869,6 +893,7 @@ export default function App() {
             year: 1,
             status: '刚入学，一脸清纯',
             favor: 50,
+            lastInteractedQuarter: newState.quarter,
           };
           newState.labMates.push(newMate);
           addLog(`实验室迎来了新成员：${newMate.name}（${newMate.role}）。`, "SUCCESS");
@@ -884,10 +909,74 @@ export default function App() {
         }
       }
 
+      // 博士前两年：每学期（两季度）「校园与讲坛」次数考核（进入第 3/5/7/9 季度时检查刚结束的学期）
+      if ([3, 5, 7, 9].includes(nextQ)) {
+        const arr = newState.collegeActivityByQuarter ?? [];
+        const i0 = nextQ - 3;
+        const i1 = nextQ - 2;
+        const actual = (arr[i0] ?? 0) + (arr[i1] ?? 0);
+        const carry = newState.seminarCarryoverDeficit ?? 0;
+        const required = SEMINAR_REQUIRED_PER_SEMESTER + carry;
+        if (actual < required) {
+          const owe = required - actual;
+          newState.seminarCarryoverDeficit = owe;
+          if ((prev.seminarComplianceStrikes ?? 0) >= 1) {
+            newState.milestone = '培养环节退学';
+            addLog('培养办通报：讲坛参与培养环节再次未达标，学籍无法延续。', 'DANGER');
+            queueMicrotask(() => setIsGameOver(true));
+          } else {
+            newState.seminarComplianceStrikes = 1;
+            newState.semesterComplianceAlert =
+              `【培养办警告】博士培养要求：第一、二学年内，每学期（两个连续季度）须累计完成至少 ${SEMINAR_REQUIRED_PER_SEMESTER} 次「校园与讲坛」行动。` +
+              `刚结束的这一学期你实际完成 ${actual} 次，低于本学期累计要求 ${required} 次（含上期结转补足）。` +
+              `下一学期窗口内须至少完成 ${SEMINAR_REQUIRED_PER_SEMESTER + owe} 次讲坛类活动；若再次不达标，将终止培养。`;
+            addLog(
+              `讲坛参与不足：本学期仅 ${actual} 次，要求 ${required} 次。培养办已发出书面警告。`,
+              'WARNING'
+            );
+          }
+        } else {
+          newState.seminarCarryoverDeficit = 0;
+          newState.seminarComplianceStrikes = 0;
+        }
+      }
+
+      // 上季度未与导师/同门互动则好感略降
+      const endedQ = prev.quarter;
+      if (newState.hasAdvisor) {
+        if ((newState.advisorLastInteractedQuarter ?? 0) !== endedQ) {
+          newState.advisorFavor = Math.max(0, newState.advisorFavor - 5);
+        }
+        newState.labMates = newState.labMates.map((m) => {
+          const last = m.lastInteractedQuarter ?? 0;
+          if (last !== endedQ) {
+            return { ...m, favor: Math.max(0, m.favor - 4) };
+          }
+          return m;
+        });
+      }
+
       // Recover some stats
       newState.energy = 100;
       newState.sanity = Math.min(100, newState.sanity + 10);
       newState.health = Math.min(100, newState.health + 5);
+
+      if (
+        newState.hasAdvisor &&
+        newState.milestone !== '培养环节退学' &&
+        (newState.advisorFavor < 36 || newState.labMates.some((m) => m.favor < 36)) &&
+        Math.random() < 0.24
+      ) {
+        newState.sanity = Math.max(0, newState.sanity - 3);
+        newState.logs = [
+          {
+            quarter: nextQ,
+            message: pickColdLabAtmosphereLine(),
+            type: 'WARNING' as GameLog['type'],
+          },
+          ...newState.logs,
+        ];
+      }
 
       // Milestone transitions
       if (newState.progress >= 100) {
@@ -1003,6 +1092,7 @@ export default function App() {
       '开题拖延退学',
       '中期拖延退学',
       '延毕退学',
+      '培养环节退学',
       '顺利毕业',
     ];
     if (!terminalMilestones.includes(newState.milestone) && Math.random() < 0.38) {
@@ -1052,8 +1142,17 @@ export default function App() {
       return;
     }
 
+    if (action.fundingCost > 0 && state.funding < action.fundingCost) {
+      const b = pickInsufficientFundingBlock();
+      setCurrentEvent({ title: b.title, description: b.body, effect: {} });
+      setIsEventModalOpen(true);
+      return;
+    }
+
     if (action.id === 'run_experiments' && action.gpuCost > 0 && state.gpuCredits < action.gpuCost) {
-      addLog('算力额度不足，无法运行本轮实验。请在下季度领取算力补充或通过资产等途径恢复后再试。', 'WARNING');
+      const b = pickInsufficientGpuBlock();
+      setCurrentEvent({ title: b.title, description: b.body, effect: {} });
+      setIsEventModalOpen(true);
       return;
     }
 
@@ -1105,22 +1204,35 @@ export default function App() {
 
     const profile = ADVISOR_PROFILES[state.advisorType];
     const progressMult = state.hasAdvisor ? profile.progressMultiplier : 1.0;
+    const litFactor = getLiteratureSupportFactor(state);
+    const labAtmosphereMult = getLabAtmosphereProgressMultiplier(state);
+    const progExtraForDisplay =
+      (action.category === 'RESEARCH' || action.category === 'TEAM' ? labAtmosphereMult : 1) *
+      (action.id === 'run_experiments' ? 0.35 + 0.65 * litFactor : 1);
 
-    /** 论文撰写：概率触发学术不端嫌疑，增量以 5 为均值小幅波动；叙事与弹窗文案一致 */
-    const writePaperMisconductHit = action.id === 'write_paper' && Math.random() < 0.28;
+    /** 文献支撑不足时撰写论文更容易踩学术诚信红线 */
+    const writePaperMisconductHit =
+      action.id === 'write_paper' && Math.random() < 0.2 + (1 - litFactor) * 0.42;
     const writePaperMisconductDelta = writePaperMisconductHit ? rollWritePaperMisconductDelta() : 0;
     const writePaperMisconductLine = writePaperMisconductHit
       ? WRITE_PAPER_MISCONDUCT_NARRATIVES[Math.floor(Math.random() * WRITE_PAPER_MISCONDUCT_NARRATIVES.length)]
       : '';
     /** 出差报告：会场风评对嫌疑的加减，预先掷骰以便写入影响列表 */
     let conferenceOutcome: { dMisconduct: number; dReputation: number } | null = null;
+    let conferenceDoubt = false;
     const literaturePaperDelta =
       action.id === 'literature_review' && state.hasAdvisor ? rollLiteraturePaperProgressDelta() : 0;
     const experimentPaperDelta =
       action.id === 'run_experiments' && state.hasAdvisor ? rollExperimentPaperProgressDelta() : 0;
 
     if (action.id === 'conference_trip') {
-      if (Math.random() < 0.52) {
+      const doubtTh = 0.1 + (1 - litFactor) * 0.52;
+      if (Math.random() < doubtTh) {
+        conferenceDoubt = true;
+        const mis = 9 + Math.floor(Math.random() * 11);
+        const rep = -3 - Math.floor(Math.random() * 6);
+        conferenceOutcome = { dMisconduct: mis, dReputation: rep };
+      } else if (Math.random() < 0.52) {
         if (Math.random() < 0.58) {
           const cut = 6 + Math.floor(Math.random() * 9);
           conferenceOutcome = { dMisconduct: -cut, dReputation: 1 + Math.floor(Math.random() * 3) };
@@ -1130,6 +1242,23 @@ export default function App() {
         }
       }
     }
+
+    const scaledExperimentPaperDelta =
+      action.id === 'run_experiments' && experimentPaperDelta > 0 && state.hasAdvisor
+        ? Math.max(0, Math.round(experimentPaperDelta * (0.35 + 0.65 * litFactor)))
+        : 0;
+
+    const nextLowLitResearchCount =
+      action.id === 'run_experiments' || action.id === 'write_paper' || action.id === 'conference_trip'
+        ? litFactor >= 1
+          ? 0
+          : (state.lowLitResearchClickCount ?? 0) + 1
+        : undefined;
+    const lowLitNag =
+      nextLowLitResearchCount !== undefined && nextLowLitResearchCount > 3 && litFactor < 1;
+    const conferenceNegative =
+      conferenceDoubt ||
+      (conferenceOutcome !== null && conferenceOutcome.dMisconduct > 0);
 
     setState(prev => {
       const newState = { ...prev };
@@ -1148,12 +1277,39 @@ export default function App() {
       newState.funding = prev.funding - action.fundingCost + action.fundingGain;
       newState.gpuCredits = Math.max(0, prev.gpuCredits - action.gpuCost);
       newState.actionsThisQuarter += 1;
-      
+
+      if (action.id === 'college_activity') {
+        newState.collegeActivityByQuarter = bumpQuarterStat(prev.collegeActivityByQuarter ?? [], prev.quarter, 1);
+      }
+      if (action.id === 'literature_review') {
+        newState.literatureReviewByQuarter = bumpQuarterStat(prev.literatureReviewByQuarter ?? [], prev.quarter, 1);
+      }
+      const cq = prev.quarter;
+      if (action.id === 'visit_advisor' && prev.hasAdvisor) {
+        newState.advisorLastInteractedQuarter = cq;
+      }
+      if ((action.id === 'team_building' || action.id === 'group_overtime') && prev.hasAdvisor) {
+        newState.advisorLastInteractedQuarter = cq;
+        newState.labMates = newState.labMates.map((m) => ({ ...m, lastInteractedQuarter: cq }));
+      }
+
+      if (nextLowLitResearchCount !== undefined) {
+        newState.lowLitResearchClickCount = nextLowLitResearchCount;
+      }
+
       if (action.creditGain) newState.credits += action.creditGain;
       if (action.misconductChange) newState.misconduct = Math.min(100, Math.max(0, newState.misconduct + action.misconductChange));
 
       const progressMultInner = prev.hasAdvisor ? profileInner.progressMultiplier : 1.0;
-      newState.progress = Math.min(100, newState.progress + (action.progressGain * progressMultInner * progressGainMod));
+      const litF = getLiteratureSupportFactor(prev);
+      const labM = getLabAtmosphereProgressMultiplier(prev);
+      let progExtra = 1;
+      if (action.category === 'RESEARCH' || action.category === 'TEAM') progExtra *= labM;
+      if (action.id === 'run_experiments') progExtra *= 0.35 + 0.65 * litF;
+      newState.progress = Math.min(
+        100,
+        newState.progress + action.progressGain * progressMultInner * progressGainMod * progExtra
+      );
       
       if (prev.hasAdvisor) {
         newState.advisorFavor = Math.min(100, Math.max(0, newState.advisorFavor + (action.favorGain * profileInner.favorMultiplier)));
@@ -1169,7 +1325,7 @@ export default function App() {
         if (action.id === 'conference_trip') newState.reputation += 10;
 
         if (action.id === 'write_paper') {
-          const writingGain = 20 * progressGainMod;
+          const writingGain = 20 * progressGainMod * (0.5 + 0.5 * litF);
           newState.paperWritingProgress += writingGain;
           
           if (writePaperMisconductHit && writePaperMisconductDelta > 0) {
@@ -1207,8 +1363,8 @@ export default function App() {
           }
         }
 
-        if (action.id === 'run_experiments' && experimentPaperDelta > 0 && prev.hasAdvisor) {
-          newState.paperWritingProgress = Math.min(100, newState.paperWritingProgress + experimentPaperDelta);
+        if (action.id === 'run_experiments' && scaledExperimentPaperDelta > 0 && prev.hasAdvisor) {
+          newState.paperWritingProgress = Math.min(100, newState.paperWritingProgress + scaledExperimentPaperDelta);
           if (newState.paperWritingProgress >= 100) {
             newState.submittedPapers += 1;
             newState.paperWritingProgress = 0;
@@ -1225,10 +1381,17 @@ export default function App() {
 
         if (action.id === 'conference_trip' && conferenceOutcome) {
           newState.misconduct = Math.min(100, Math.max(0, newState.misconduct + conferenceOutcome.dMisconduct));
-          if (conferenceOutcome.dReputation > 0) {
-            newState.reputation = Math.min(100, newState.reputation + conferenceOutcome.dReputation);
-          }
-          if (conferenceOutcome.dMisconduct < 0) {
+          newState.reputation = Math.min(100, Math.max(0, newState.reputation + conferenceOutcome.dReputation));
+          if (conferenceDoubt) {
+            const add = conferenceOutcome.dMisconduct;
+            const rep = conferenceOutcome.dReputation;
+            queueMicrotask(() =>
+              addLog(
+                `出差报告：有人就着海报追问实验与复现细节，你支支吾吾答不上来，会场里多了几双打量你的眼睛。学术不端嫌疑 +${add}，声望变化 ${rep}。`,
+                'WARNING'
+              )
+            );
+          } else if (conferenceOutcome.dMisconduct < 0) {
             const cut = -conferenceOutcome.dMisconduct;
             queueMicrotask(() =>
               addLog(
@@ -1273,7 +1436,7 @@ export default function App() {
     if (action.fundingCost) effect.funding = -Math.round(action.fundingCost);
     if (action.gpuCost) effect.gpuCredits = -Math.round(action.gpuCost);
     if (action.progressGain)
-      effect.progress = Math.round(action.progressGain * progressMult * progressGainMod);
+      effect.progress = Math.round(action.progressGain * progressMult * progressGainMod * progExtraForDisplay);
     if (action.favorGain) effect.advisorFavor = Math.round(action.favorGain * profile.favorMultiplier);
     if (action.fundingGain) effect.funding = (effect.funding || 0) + Math.round(action.fundingGain);
     if (action.creditGain) effect.credits = Math.round(action.creditGain);
@@ -1293,16 +1456,27 @@ export default function App() {
     }
 
     if (literaturePaperDelta > 0) effect.paperWritingProgress = literaturePaperDelta;
-    if (experimentPaperDelta > 0) effect.paperWritingProgress = experimentPaperDelta;
+    if (scaledExperimentPaperDelta > 0) effect.paperWritingProgress = scaledExperimentPaperDelta;
 
     const randomDesc = action.descriptions && action.descriptions.length > 0 
       ? action.descriptions[Math.floor(Math.random() * action.descriptions.length)]
       : action.description;
 
-    const eventDescription =
+    let eventDescription =
       action.id === 'write_paper' && writePaperMisconductHit && writePaperMisconductLine
         ? `${randomDesc}\n\n${writePaperMisconductLine}`
         : randomDesc;
+    if (action.id === 'run_experiments' && litFactor < 0.999) {
+      eventDescription = `${eventDescription}\n\n${pickExperimentWeakLiteratureLine()}`;
+    }
+
+    const hadLowLitNegativeNarrative =
+      (action.id === 'write_paper' && writePaperMisconductHit) ||
+      (action.id === 'conference_trip' && conferenceNegative) ||
+      (action.id === 'run_experiments' && litFactor < 1);
+    if (lowLitNag && hadLowLitNegativeNarrative) {
+      eventDescription = `${eventDescription}\n\n也许是时候看看文献了呢。`;
+    }
 
     setCurrentEvent({
       title: action.label,
@@ -1406,6 +1580,14 @@ export default function App() {
       }
       
       newState.interactionsThisQuarter = [...prev.interactionsThisQuarter, personId];
+      const cq = prev.quarter;
+      if (isAdvisor) {
+        newState.advisorLastInteractedQuarter = cq;
+      } else {
+        newState.labMates = prev.labMates.map((m) =>
+          m.id === personId ? { ...m, lastInteractedQuarter: cq } : m
+        );
+      }
       tickExternalMomentAfterAction(prev, newState);
       return newState;
     });
@@ -1668,9 +1850,9 @@ export default function App() {
 
     // Initialize Lab Mates
     const initialLabMates: LabMate[] = [
-      { id: '1', name: '张傲天', role: '师兄', year: 3, status: '正在改论文', favor: 50 },
-      { id: '2', name: '李婉清', role: '师姐', year: 2, status: '在跑实验', favor: 50 },
-      { id: '3', name: '王德发', role: '师弟', year: 1, status: '在摸鱼', favor: 50 },
+      { id: '1', name: '张傲天', role: '师兄', year: 3, status: '正在改论文', favor: 50, lastInteractedQuarter: state.quarter },
+      { id: '2', name: '李婉清', role: '师姐', year: 2, status: '在跑实验', favor: 50, lastInteractedQuarter: state.quarter },
+      { id: '3', name: '王德发', role: '师弟', year: 1, status: '在摸鱼', favor: 50, lastInteractedQuarter: state.quarter },
     ];
 
     setState(prev => ({
@@ -1679,6 +1861,7 @@ export default function App() {
       advisorType: type,
       advisorName: `${profile.label}导师`,
       advisorJoinedQuarter: prev.quarter,
+      advisorLastInteractedQuarter: prev.quarter,
       advisorFavor: 100, // Start with full favor since they joined
       milestone: prev.milestone === '课程学习' || prev.milestone === '导师选择' ? '开题准备' : prev.milestone,
       projectQuarters: 0,
@@ -1693,10 +1876,9 @@ export default function App() {
       addLog("本季度行动次数已达上限。", "WARNING");
       return;
     }
-    const cost = 200;
-    const energyCost = 20;
-    if (state.funding < cost || state.energy < energyCost) {
-      addLog("资金或精力不足以拜访导师。", "WARNING");
+    const energyCost = 18;
+    if (state.energy < energyCost) {
+      addLog("精力不足，改天再去办公室门口蹲导师吧。", "WARNING");
       return;
     }
     const profile = ADVISOR_PROFILES[type];
@@ -1710,7 +1892,6 @@ export default function App() {
       newPotential[type] = Math.min(100, newPotential[type] + favorDelta);
       const next: GameState = {
         ...prev,
-        funding: prev.funding - cost,
         energy: prev.energy - energyCost,
         actionsThisQuarter: prev.actionsThisQuarter + 1,
         potentialAdvisors: newPotential,
@@ -1732,7 +1913,6 @@ export default function App() {
     });
 
     const effect: Record<string, number> = {
-      funding: -cost,
       energy: -energyCost,
       mentorImpressionGain: favorDelta,
     };
@@ -1751,16 +1931,19 @@ export default function App() {
   };
 
 
-  const completePlayerLogin = (useCustomName: boolean) => {
+  const drawEnrollmentNameFromLot = () => {
+    const name = generateRandomPlayerName().trim().slice(0, 24);
+    setLoginNameInput(name);
+  };
+
+  const commitPlayerLogin = () => {
     const raw = loginNameInput.trim().slice(0, 24);
-    const id =
-      useCustomName && raw.length > 0
-        ? {
-            playerName: raw,
-            playerContactEmail: buildEmailFromDisplayName(raw),
-            playerOfficeRoom: buildRandomOfficeRoom(),
-          }
-        : generatePlayerRunIdentity();
+    if (!raw) return;
+    const id = {
+      playerName: raw,
+      playerContactEmail: buildEmailFromDisplayName(raw),
+      playerOfficeRoom: buildRandomOfficeRoom(),
+    };
     const uni = pickRandomUndergradUniversity();
     setState((prev) => ({
       ...prev,
@@ -1775,40 +1958,84 @@ export default function App() {
   return (
     <div className="min-h-dvh min-h-[100svh] flex flex-col bg-[#F8F9FA] text-[#1A1A1A] font-sans selection:bg-black selection:text-white">
       {!sessionReady && (
-        <div className="fixed inset-0 z-[220] flex items-center justify-center p-6 bg-slate-900/75 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-[28px] bg-white border border-black/5 shadow-2xl p-8 flex flex-col gap-5">
-            <div>
-              <p className="text-[10px] font-mono uppercase tracking-widest text-violet-700/80 mb-1">中关村学院</p>
-              <h2 className="text-xl font-bold text-gray-900">入学登记</h2>
-              <p className="text-sm text-gray-500 mt-2 leading-relaxed">
-                可填写角色姓名（选填）；留空并点「随机起名」将随机生成中文名与邮箱。本科母校、工位等档案信息在登记后固定，不随季度变化。
-              </p>
-            </div>
-            <input
-              type="text"
-              value={loginNameInput}
-              onChange={(e) => setLoginNameInput(e.target.value)}
-              placeholder="例如：王小明（选填，最多 24 字）"
-              maxLength={24}
-              className="w-full rounded-xl border border-black/15 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-violet-400/50"
-              autoComplete="name"
+        <div className="fixed inset-0 z-[220] flex items-center justify-center p-4 sm:p-6 bg-gradient-to-br from-[#1a1c2e] via-[#252845] to-[#12141f]">
+          <div
+            className="pointer-events-none absolute inset-0 opacity-[0.07]"
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
+            }}
+            aria-hidden
+          />
+          <div className="relative w-full max-w-[26rem]">
+            <div
+              className="absolute -inset-[1px] rounded-lg bg-gradient-to-br from-amber-200/50 via-amber-100/20 to-amber-900/30 blur-[1px]"
+              aria-hidden
             />
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => completePlayerLogin(false)}
-                className="py-3 rounded-xl bg-black text-white text-sm font-bold hover:bg-gray-800 transition-colors"
-              >
-                随机起名并开始
-              </button>
-              <button
-                type="button"
-                disabled={!loginNameInput.trim()}
-                onClick={() => completePlayerLogin(true)}
-                className="py-3 rounded-xl border border-black/15 text-sm font-bold text-gray-800 hover:bg-black/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                使用填写姓名
-              </button>
+            <div
+              className="relative overflow-hidden rounded-lg border-2 border-amber-900/25 bg-[#faf6ee] text-stone-800 shadow-[0_28px_64px_rgba(0,0,0,0.45),inset_0_1px_0_rgba(255,255,255,0.85)]"
+              style={{
+                backgroundImage:
+                  'linear-gradient(165deg, rgba(255,255,255,0.65) 0%, transparent 42%), linear-gradient(90deg, rgba(180,140,80,0.04) 0%, transparent 50%)',
+              }}
+            >
+              <div className="absolute left-0 top-0 h-full w-3 border-r border-amber-900/10 bg-gradient-to-b from-amber-900/[0.06] to-transparent" aria-hidden />
+              <div className="relative px-7 py-8 sm:px-9 sm:py-10 flex flex-col gap-6">
+                <header className="text-center space-y-3 border-b border-amber-900/15 pb-6">
+                  <p className="text-[10px] font-mono tracking-[0.35em] text-amber-900/55 uppercase">Admission · {new Date().getFullYear()}</p>
+                  <div className="inline-flex items-center justify-center gap-2">
+                    <span className="h-px w-8 bg-amber-800/30" aria-hidden />
+                    <h2 className="font-serif text-[1.35rem] sm:text-2xl font-bold tracking-tight text-stone-900 leading-snug">
+                      新生入学贺卡
+                    </h2>
+                    <span className="h-px w-8 bg-amber-800/30" aria-hidden />
+                  </div>
+                  <p className="text-[11px] font-mono text-amber-900/50">{BZA.name}</p>
+                </header>
+
+                <div className="space-y-4 text-sm leading-[1.75] text-stone-700">
+                  <p>
+                    欢迎加入{BZA.short}。学籍系统已为你预留一行空白——从这里启程，你将在「{BZA.triad}」的坐标里，与项目制培养签下一份有点长、但值得跑的合约。
+                  </p>
+                  <p>
+                    请在新生的注册表上亲笔落款；若想轻装进门，也可先摇摇签筒，听走廊里的咖啡香和机房的风扇声替你摇出一个称呼。
+                  </p>
+                  <p className="text-center text-xs text-stone-500 font-serif not-italic pt-1">—— 新生登记处 · 敬启</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label htmlFor="player-enroll-name" className="text-[10px] font-mono uppercase tracking-wider text-stone-500">
+                    名册签署
+                  </label>
+                  <input
+                    id="player-enroll-name"
+                    type="text"
+                    value={loginNameInput}
+                    onChange={(e) => setLoginNameInput(e.target.value)}
+                    placeholder="亲笔落款，或先点「签筒提名」（最多 24 字）"
+                    maxLength={24}
+                    className="w-full rounded-md border border-amber-900/20 bg-white/80 px-4 py-3 text-sm text-stone-800 shadow-inner outline-none ring-amber-700/30 placeholder:text-stone-400 focus:ring-2 focus:border-amber-800/35"
+                    autoComplete="name"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => drawEnrollmentNameFromLot()}
+                    className="py-3.5 rounded-md bg-stone-900 text-[#faf6ee] text-sm font-bold tracking-wide shadow-md hover:bg-stone-800 transition-colors"
+                  >
+                    签筒提名
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!loginNameInput.trim()}
+                    onClick={() => commitPlayerLogin()}
+                    className="py-3.5 rounded-md border-2 border-amber-900/25 bg-white/60 text-sm font-bold text-stone-800 hover:bg-amber-50/80 transition-colors disabled:opacity-35 disabled:cursor-not-allowed disabled:hover:bg-white/60"
+                  >
+                    正式入学
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -1818,50 +2045,27 @@ export default function App() {
         id="onb-header"
         className="shrink-0 bg-white border-b border-black/5 px-3 sm:px-6 py-3 lg:py-4 sticky top-0 z-30 backdrop-blur-md bg-white/80"
       >
-        <div className="max-w-7xl mx-auto flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-between sm:items-center">
-          <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-            <div className="bg-black text-white p-1.5 sm:p-2 rounded-lg shrink-0">
-              <GraduationCap size={20} className="sm:w-6 sm:h-6" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-base sm:text-xl font-bold tracking-tight truncate">
-                {BZA_GAME_TITLE}{' '}
-                <span className="text-[10px] sm:text-xs font-normal opacity-40">v2.3</span>
-              </h1>
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] sm:text-[10px] font-mono uppercase tracking-wider opacity-50">
-                <span className="flex items-center gap-1"><Calendar size={10} className="sm:w-3 sm:h-3" /> 第 {state.year} 年 {state.season}</span>
-                <span className="hidden sm:inline">•</span>
-                <span>季度 {state.quarter}/16</span>
+        <div className="max-w-7xl mx-auto flex flex-col gap-3">
+          <div className="flex items-start justify-between gap-3 min-w-0">
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1 min-h-[2.75rem] sm:min-h-0 pr-1">
+              <div className="bg-black text-white p-1.5 sm:p-2 rounded-lg shrink-0">
+                <GraduationCap size={20} className="sm:w-6 sm:h-6" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-base sm:text-xl font-bold tracking-tight truncate">
+                  {BZA_GAME_TITLE}{' '}
+                  <span className="text-[10px] sm:text-xs font-normal opacity-40">v2.3</span>
+                </h1>
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[9px] sm:text-[10px] font-mono uppercase tracking-wider opacity-50">
+                  <span className="flex items-center gap-1">
+                    <Calendar size={10} className="sm:w-3 sm:h-3" /> 第 {state.year} 年 {state.season}
+                  </span>
+                  <span className="hidden sm:inline">•</span>
+                  <span>季度 {state.quarter}/16</span>
+                </div>
               </div>
             </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3 sm:gap-6 justify-between sm:justify-end">
-            <div className="flex gap-3 sm:gap-4 flex-1 sm:flex-initial justify-between sm:justify-end">
-              <div className="text-right">
-                <p className="text-[9px] sm:text-[10px] font-mono uppercase opacity-40">资金</p>
-                <p className="text-sm sm:text-base font-bold text-emerald-600">${state.funding.toLocaleString()}</p>
-              </div>
-              <div className="text-right">
-                <p className="text-[9px] sm:text-[10px] font-mono uppercase opacity-40">算力</p>
-                <p className="text-sm sm:text-base font-bold text-blue-600">{state.gpuCredits}</p>
-              </div>
-              <div className="text-right border-l border-black/5 pl-3 sm:pl-4">
-                <p className="text-[9px] sm:text-[10px] font-mono uppercase opacity-40">季度行动</p>
-                <p className="text-sm sm:text-base font-bold text-amber-600">
-                  {ACTIONS_PER_QUARTER - state.actionsThisQuarter}{' '}
-                  <span className="text-[10px] opacity-30">/ {ACTIONS_PER_QUARTER}</span>
-                </p>
-              </div>
-            </div>
-            <button 
-              onClick={nextQuarter}
-              disabled={isLoading || isGameOver || !sessionReady}
-              className="shrink-0 bg-black text-white px-4 sm:px-6 py-2 sm:py-2.5 rounded-full font-bold text-xs sm:text-sm hover:bg-gray-800 transition-all disabled:opacity-30 flex items-center gap-2 w-full sm:w-auto justify-center"
-            >
-              {isLoading ? "处理中..." : "进入下个季度"}
-            </button>
-            <div className="relative shrink-0">
+            <div className="relative shrink-0 pt-0.5">
               <button
                 type="button"
                 onClick={() => setHelpMenuOpen((v) => !v)}
@@ -1917,9 +2121,9 @@ export default function App() {
       </header>
 
       {/* 主体：横屏 lg 三列；竖屏窄屏单区 + 底栏切换 */}
-      <div className="flex-1 flex flex-col min-h-0 w-full max-w-7xl mx-auto lg:px-6 pb-[calc(3.75rem+env(safe-area-inset-bottom,0px))] lg:pb-0">
+      <div className="flex-1 flex flex-col min-h-0 w-full max-w-7xl mx-auto lg:px-6 pb-[calc(4.15rem+env(safe-area-inset-bottom,0px))] lg:pb-0">
         <main className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 lg:gap-8 gap-0 px-3 sm:px-4 lg:px-0 py-3 lg:py-6 w-full min-w-0">
-        {/* 左：档案（状态、自我调节、导师卡片） */}
+        {/* 左：档案（状态、自我调节） */}
         <div
           id="onb-archive-column"
           className={`flex flex-col gap-4 sm:gap-6 lg:col-span-3 min-h-0 overflow-y-auto lg:overflow-visible scrollbar-hide ${
@@ -1936,8 +2140,27 @@ export default function App() {
             <StatBar icon={Heart} label="健康值" value={state.health} color="bg-rose-500" />
             <StatBar icon={Zap} label="精力值" value={state.energy} color="bg-amber-400" />
             <StatBar icon={ShieldAlert} label="学术不端嫌疑" value={state.misconduct} color="bg-red-600" />
-            
+
             <div className="pt-4 border-t border-black/5 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-emerald-50/80 p-3 rounded-xl border border-emerald-100">
+                  <p className="text-[8px] font-mono uppercase opacity-50 text-emerald-900/70 flex items-center gap-1">
+                    <DollarSign size={10} className="opacity-70" /> 资金
+                  </p>
+                  <p
+                    className={`text-sm font-bold font-mono mt-1 ${state.funding < 0 ? 'text-rose-600' : 'text-emerald-700'}`}
+                  >
+                    ${state.funding.toLocaleString()}
+                  </p>
+                </div>
+                <div className="bg-blue-50/80 p-3 rounded-xl border border-blue-100">
+                  <p className="text-[8px] font-mono uppercase opacity-50 text-blue-900/70 flex items-center gap-1">
+                    <Cpu size={10} className="opacity-70" /> 算力
+                  </p>
+                  <p className="text-sm font-bold font-mono text-blue-700 mt-1">{state.gpuCredits}</p>
+                </div>
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-gray-50 p-2 rounded-xl border border-black/5">
                   <p className="text-[8px] font-mono uppercase opacity-40">发表论文</p>
@@ -2011,28 +2234,6 @@ export default function App() {
               </button>
             </div>
           </div>
-
-          {state.hasAdvisor && (
-            <div
-              id="onb-advisor"
-              className="bg-black text-white p-4 sm:p-6 rounded-3xl shadow-xl flex flex-col gap-4"
-            >
-              <div className="flex justify-between items-start gap-3">
-                <div className="flex items-center gap-3 min-w-0">
-                  <AvatarThumb
-                    spriteKey={advisorAvatarKey(state.advisorType)}
-                    frameClassName="w-11 h-11 border-white/20"
-                  />
-                  <h2 className="text-[10px] font-mono uppercase opacity-40 leading-tight">
-                    导师：{state.advisorName}
-                  </h2>
-                </div>
-                <Users size={16} className="opacity-40 shrink-0" />
-              </div>
-              <p className="text-xs italic opacity-70 leading-relaxed">"{advisorMessage}"</p>
-              <StatBar icon={CheckCircle2} label="好感度" value={state.advisorFavor} color="bg-emerald-400" />
-            </div>
-          )}
         </div>
 
         {/* 中：主页（子 Tab：首页 / 日常 / 科研…） */}
@@ -2280,7 +2481,7 @@ export default function App() {
                                 onClick={() => visitPotentialAdvisor(type)}
                                 className="flex-1 py-2 bg-black/5 hover:bg-black/10 text-black rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2"
                               >
-                                <Coffee size={14} /> 拜访求教 ($200)
+                                <Coffee size={14} /> 拜访求教
                               </button>
                               <button 
                                 onClick={() => selectAdvisor(type)}
@@ -2301,8 +2502,11 @@ export default function App() {
                           {state.hasAdvisor && (
                             <>
                               <p className="text-[10px] font-mono uppercase opacity-40 tracking-wider">导师</p>
-                              <div className="w-full bg-white p-5 rounded-2xl border border-indigo-200/80 shadow-md ring-1 ring-indigo-100">
-                                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-2">
+                              <div
+                                id="onb-team-advisor-card"
+                                className="w-full bg-white p-5 rounded-2xl border border-indigo-200/80 shadow-md ring-1 ring-indigo-100"
+                              >
+                                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-3">
                                   <div className="flex flex-col sm:flex-row sm:items-center gap-3 min-w-0">
                                     <AvatarThumb
                                       spriteKey={advisorAvatarKey(state.advisorType)}
@@ -2312,7 +2516,7 @@ export default function App() {
                                     <span className="text-base font-bold text-indigo-700 flex items-center gap-2">
                                       <GraduationCap size={18} className="shrink-0" /> {state.advisorName}（导师）
                                     </span>
-                                    <span className="text-[10px] opacity-50">你的学术引路人 · 每季度可互动 1 次，消耗 1 次行动与少量精力</span>
+                                    <span className="text-[10px] opacity-50">你的学术引路人</span>
                                     </div>
                                   </div>
                                   <button
@@ -2327,13 +2531,19 @@ export default function App() {
                                     {state.interactionsThisQuarter.includes('advisor') ? '本季已互动' : '随机互动'}
                                   </button>
                                 </div>
+                                <p className="text-xs italic text-indigo-950/75 leading-relaxed mb-3 border-l-2 border-indigo-200 pl-3">
+                                  「{advisorMessage}」
+                                </p>
                                 <p className="text-[10px] text-gray-500 mb-3 leading-relaxed">
                                   每次互动会进入一小段日常科研剧情（例如汇报、讨论、吃饭、申请资源等），也可能牵动你的状态与资源。
                                 </p>
                                 <StatBar icon={HeartHandshake} label="导师好感度" value={state.advisorFavor} color="bg-indigo-400" />
+                                <p className="text-[10px] text-indigo-700/85 font-medium mt-1.5">
+                                  对你的态度：{relationMoodLabel(state.advisorFavor)}
+                                </p>
                               </div>
                               <div className="border-t border-black/10 pt-4">
-                                <p className="text-[10px] font-mono uppercase opacity-40 tracking-wider mb-3">同门师兄弟</p>
+                                <p className="text-[10px] font-mono uppercase opacity-40 tracking-wider mb-3">同门</p>
                               </div>
                             </>
                           )}
@@ -2348,7 +2558,7 @@ export default function App() {
                                       <AvatarThumb spriteKey={labAvatarKey(mate.role)} frameClassName="w-11 h-11" />
                                       <div className="flex flex-col min-w-0">
                                       <span className="text-sm font-bold">{mate.name}（{title}）</span>
-                                      <span className="text-[10px] opacity-50">博士 {mate.year} 年级 · 每季度每人可互动 1 次</span>
+                                      <span className="text-[10px] opacity-50">博士 {mate.year} 年级</span>
                                       </div>
                                     </div>
                                     <button
@@ -2367,6 +2577,9 @@ export default function App() {
                                     <span className="text-[10px] px-1.5 py-0.5 bg-blue-50 text-blue-600 rounded">{mate.status}</span>
                                   </div>
                                   <StatBar icon={HeartHandshake} label="好感度" value={mate.favor} color="bg-emerald-400" />
+                                  <p className="text-[10px] text-emerald-800/80 font-medium mt-1">
+                                    对你的态度：{relationMoodLabel(mate.favor)}
+                                  </p>
                                 </div>
                               );
                             })}
@@ -2386,8 +2599,15 @@ export default function App() {
                             state.assets.map(asset => (
                               <div key={asset.id} className="bg-white p-6 rounded-3xl border border-black/5 shadow-sm flex flex-col gap-4">
                                 <div className="flex gap-4 items-start">
-                                  <div className="w-24 h-24 shrink-0 rounded-2xl bg-gradient-to-br from-gray-100 to-gray-200 border border-black/5 overflow-hidden flex items-center justify-center">
-                                    <AssetThumb assetId={asset.id} />
+                                  <div className="w-24 shrink-0 flex flex-col gap-2">
+                                    <div className="w-24 h-24 rounded-2xl bg-gradient-to-br from-gray-100 to-gray-200 border border-black/5 overflow-hidden flex items-center justify-center">
+                                      <AssetThumb assetId={asset.id} />
+                                    </div>
+                                    <div className="text-[9px] font-mono text-gray-600 leading-snug text-center px-0.5 space-y-0.5">
+                                      {formatAssetEffectLines(asset).map((line, i) => (
+                                        <p key={i}>{line}</p>
+                                      ))}
+                                    </div>
                                   </div>
                                   <div className="flex-1 min-w-0 flex justify-between items-start gap-2">
                                     <div>
@@ -2412,16 +2632,12 @@ export default function App() {
                         </div>
                       )}
                       {ACTIONS.filter(a => a.category === activeTab).map(action => {
-                        const gpuBlocked =
-                          action.id === 'run_experiments' && action.gpuCost > 0 && state.gpuCredits < action.gpuCost;
                         return (
                         <button
                           key={action.id}
                           onClick={() => handleAction(action)}
-                          disabled={isGameOver || gpuBlocked}
-                          className={`group bg-white p-5 rounded-2xl border border-black/5 shadow-sm transition-all text-left flex justify-between items-center ${
-                            gpuBlocked ? 'opacity-45 cursor-not-allowed' : 'hover:border-black hover:shadow-md'
-                          }`}
+                          disabled={isGameOver}
+                          className="group bg-white p-5 rounded-2xl border border-black/5 shadow-sm transition-all text-left flex justify-between items-center hover:border-black hover:shadow-md"
                         >
                           <div className="flex-1">
                             <h4 className="font-bold text-lg">{action.label}</h4>
@@ -2604,40 +2820,85 @@ export default function App() {
               </AnimatePresence>
             </div>
           </section>
+
+          {sessionReady && (
+            <div
+              id="onb-quarter-wide"
+              className="hidden lg:flex flex-col items-end gap-2 pt-1 shrink-0"
+            >
+              <p className="text-xs font-mono font-bold text-amber-600">
+                季度行动 {ACTIONS_PER_QUARTER - state.actionsThisQuarter}/{ACTIONS_PER_QUARTER}
+              </p>
+              <button
+                type="button"
+                onClick={nextQuarter}
+                disabled={isLoading || isGameOver}
+                className="bg-black text-white px-6 py-2.5 rounded-full font-bold text-sm hover:bg-gray-800 transition-all disabled:opacity-30"
+              >
+                {isLoading ? '处理中...' : '进入下个季度'}
+              </button>
+            </div>
+          )}
         </div>
         </main>
       </div>
 
-      {/* 竖屏 / 窄屏底栏：档案 | 主页 | 动态 */}
+      {/* 竖屏 / 窄屏底栏：档案 | 主页 | 动态 | 分隔 | 下季度（同一行，参考稿） */}
       <nav
         className="lg:hidden fixed bottom-0 inset-x-0 z-40 border-t border-black/10 bg-white/95 backdrop-blur-md pt-1 pb-[max(0.35rem,env(safe-area-inset-bottom))] shadow-[0_-6px_24px_rgba(0,0,0,0.06)]"
-        aria-label="主分区切换"
+        aria-label="主分区与季度推进"
       >
-        <div className="max-w-lg mx-auto flex">
-          {(
-            [
-              { zone: 'ARCHIVE' as const, label: '档案', Icon: Archive },
-              { zone: 'MAIN' as const, label: '主页', Icon: Home },
-              { zone: 'FEED' as const, label: '动态', Icon: MessageSquare },
-            ] as const
-          ).map(({ zone, label, Icon }) => (
-            <button
-              key={zone}
-              type="button"
-              onClick={() => setLayoutZone(zone)}
-              className={`relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-t-lg transition-colors ${
-                layoutZone === zone ? 'text-black bg-black/5' : 'text-gray-400 active:bg-black/5'
-              }`}
-            >
-              <span className="relative inline-flex">
-                <Icon size={20} strokeWidth={layoutZone === zone ? 2.25 : 2} />
-                {zone === 'FEED' && hasUnreadMoments && (
-                  <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white" aria-hidden />
-                )}
-              </span>
-              <span className="text-[10px] font-bold">{label}</span>
-            </button>
-          ))}
+        <div className="max-w-lg mx-auto flex items-stretch gap-0">
+          <div className="flex flex-1 min-w-0 items-stretch">
+            {(
+              [
+                { zone: 'ARCHIVE' as const, label: '档案', Icon: Archive },
+                { zone: 'MAIN' as const, label: '主页', Icon: Home },
+                { zone: 'FEED' as const, label: '动态', Icon: MessageSquare },
+              ] as const
+            ).map(({ zone, label, Icon }) => (
+              <button
+                key={zone}
+                type="button"
+                onClick={() => setLayoutZone(zone)}
+                className={`relative flex-1 flex flex-col items-center justify-center gap-0.5 py-2 rounded-t-lg transition-colors min-w-0 ${
+                  layoutZone === zone ? 'text-black bg-black/5' : 'text-gray-400 active:bg-black/5'
+                }`}
+              >
+                <span className="relative inline-flex">
+                  <Icon size={20} strokeWidth={layoutZone === zone ? 2.25 : 2} />
+                  {zone === 'FEED' && hasUnreadMoments && (
+                    <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-rose-500 ring-2 ring-white" aria-hidden />
+                  )}
+                </span>
+                <span className="text-[10px] font-bold">{label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="w-px shrink-0 bg-black/10 self-stretch my-2" aria-hidden />
+          <div className="flex flex-col items-stretch justify-center gap-1.5 px-2 py-1.5 shrink-0 min-w-[6.5rem] max-w-[7.5rem]">
+            {sessionReady ? (
+              <>
+                <p className="text-[9px] font-mono font-bold text-amber-600 text-center leading-none whitespace-nowrap">
+                  季度行动 {ACTIONS_PER_QUARTER - state.actionsThisQuarter}/{ACTIONS_PER_QUARTER}
+                </p>
+                <button
+                  id="onb-quarter-fab"
+                  type="button"
+                  onClick={nextQuarter}
+                  disabled={isLoading || isGameOver}
+                  className="w-full bg-black text-white rounded-full py-2.5 px-2 text-[10px] font-bold leading-tight hover:bg-gray-800 active:scale-[0.98] transition-all disabled:opacity-35 disabled:active:scale-100"
+                >
+                  {isLoading ? '处理中...' : '进入下个季度'}
+                </button>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center gap-0.5 py-2 text-[9px] text-gray-400 text-center leading-tight">
+                <Clock size={16} className="opacity-50" aria-hidden />
+                <span>入学后开放</span>
+              </div>
+            )}
+          </div>
         </div>
       </nav>
 
@@ -2746,6 +3007,12 @@ export default function App() {
                     />
                   </div>
                 ) : null}
+                {state.semesterComplianceAlert && (
+                  <div className="bg-rose-50 border border-rose-200/90 p-4 rounded-2xl flex flex-col gap-2">
+                    <p className="text-[10px] font-mono uppercase tracking-wider text-rose-800/90">培养办 · 讲坛参与</p>
+                    <p className="text-sm text-rose-950/90 leading-relaxed whitespace-pre-wrap">{state.semesterComplianceAlert}</p>
+                  </div>
+                )}
                 {state.quarterLabNotice && (
                   <div className="bg-amber-50 border border-amber-200/80 p-4 rounded-2xl flex flex-col gap-3">
                     <p className="text-[10px] font-mono uppercase opacity-50 text-amber-900">
@@ -2827,7 +3094,7 @@ export default function App() {
                 onClick={() => {
                   setIsSummaryModalOpen(false);
                   setPaperReviewDetail(null);
-                  setState(s => ({ ...s, quarterLabNotice: undefined }));
+                  setState(s => ({ ...s, quarterLabNotice: undefined, semesterComplianceAlert: undefined }));
                 }}
                 className="w-full py-4 bg-black text-white rounded-2xl font-bold hover:bg-gray-800 transition-colors"
               >
@@ -3011,8 +3278,15 @@ export default function App() {
                 
                 <div className="w-full bg-gray-50 p-6 rounded-3xl border border-black/5 text-left">
                   <div className="flex justify-between items-start mb-2 gap-3">
-                    <div className="w-16 h-16 shrink-0 rounded-2xl overflow-hidden border border-black/10 bg-white flex items-center justify-center">
-                      <AssetThumb assetId={state.pendingAssetOffer.id} />
+                    <div className="shrink-0 flex flex-col items-center gap-1.5 w-[4.5rem]">
+                      <div className="w-16 h-16 rounded-2xl overflow-hidden border border-black/10 bg-white flex items-center justify-center">
+                        <AssetThumb assetId={state.pendingAssetOffer.id} />
+                      </div>
+                      <div className="text-[9px] font-mono text-gray-600 leading-snug text-center w-full space-y-0.5">
+                        {formatAssetEffectLines(state.pendingAssetOffer).map((line, i) => (
+                          <p key={i}>{line}</p>
+                        ))}
+                      </div>
                     </div>
                     <div className="flex-1 min-w-0 flex justify-between items-start gap-2">
                     <h3 className="font-bold text-lg">{state.pendingAssetOffer.name}</h3>

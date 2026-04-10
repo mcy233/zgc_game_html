@@ -114,7 +114,8 @@ function resolveCategory(state: GameState): MainTaskCategory | null {
     m === '无导师退学' ||
     m === '开题拖延退学' ||
     m === '中期拖延退学' ||
-    m === '延毕退学'
+    m === '延毕退学' ||
+    m === '培养环节退学'
   ) {
     return null;
   }

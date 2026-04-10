@@ -53,6 +53,12 @@ export const INITIAL_STATE: GameState = {
   actionsSinceExternalMoment: 0,
   externalMomentThreshold: 4 + Math.floor(Math.random() * 8),
   interactionsThisQuarter: [],
+  collegeActivityByQuarter: [],
+  literatureReviewByQuarter: [],
+  seminarCarryoverDeficit: 0,
+  seminarComplianceStrikes: 0,
+  advisorLastInteractedQuarter: 0,
+  lowLitResearchClickCount: 0,
   assets: [],
   logs: [{ quarter: 1, message: BZA_WELCOME_LOG, type: 'INFO' }],
   moments: [],
@@ -383,6 +389,35 @@ export const ASSETS_LIBRARY: Asset[] = [
     effect: { healthCostMultiplier: 0.8 }
   }
 ];
+
+/** 资产图标下方展示的数值摘要，与 `effect` 字段一一对应 */
+export function formatAssetEffectLines(asset: Asset): string[] {
+  const e = asset.effect;
+  const lines: string[] = [];
+  if (e.sanityCostMultiplier != null && e.sanityCostMultiplier !== 1) {
+    lines.push(`理智消耗 ×${Math.round(e.sanityCostMultiplier * 100)}%`);
+  }
+  if (e.healthCostMultiplier != null && e.healthCostMultiplier !== 1) {
+    lines.push(`健康消耗 ×${Math.round(e.healthCostMultiplier * 100)}%`);
+  }
+  if (e.energyGainMultiplier != null && e.energyGainMultiplier !== 1) {
+    const pct = Math.round((e.energyGainMultiplier - 1) * 100);
+    lines.push(pct > 0 ? `摸鱼精力 +${pct}%` : `摸鱼精力 ${pct}%`);
+  }
+  if (e.progressGainMultiplier != null && e.progressGainMultiplier !== 1) {
+    lines.push(`进度与撰写 ×${Math.round(e.progressGainMultiplier * 100)}%`);
+  }
+  if (e.reputationGainMultiplier != null && e.reputationGainMultiplier !== 1) {
+    lines.push(`声望获得 ×${Math.round(e.reputationGainMultiplier * 100)}%`);
+  }
+  if (e.gpuGainPerQuarter != null && e.gpuGainPerQuarter > 0) {
+    lines.push(`每季算力 +${e.gpuGainPerQuarter}`);
+  }
+  if (e.fundingGainPerQuarter != null && e.fundingGainPerQuarter > 0) {
+    lines.push(`每季资金 +$${e.fundingGainPerQuarter}`);
+  }
+  return lines;
+}
 
 /** 与 `asset_atlas.png` 中格子顺序一致（由 ASSETS_LIBRARY 推导，勿手动改序） */
 export const ASSET_ATLAS_ORDER: readonly string[] = ASSETS_LIBRARY.map(a => a.id);
