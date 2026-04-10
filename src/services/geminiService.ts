@@ -60,7 +60,7 @@ export async function generateAdvisorFeedback(state: GameState): Promise<string>
 }
 
 export async function generateRandomEvent(state: GameState): Promise<{ title: string; description: string; effect: Partial<GameState> }> {
-  const events = [
+  const allEvents = [
     { title: "GPU 集群维护", description: "学校的 GPU 集群要维护三天，你的实验被迫中断了。", effect: { gpuCredits: -200, sanity: -5 } },
     { title: "深夜灵感", description: "你在洗澡时突然想到了一个绝妙的算法优化思路。", effect: { progress: 6, energy: -10 } },
     { title: "免费披萨", description: "隔壁实验室开会剩下了很多披萨，你饱餐了一顿。", effect: { health: 5, energy: 20 } },
@@ -74,6 +74,12 @@ export async function generateRandomEvent(state: GameState): Promise<{ title: st
     { title: "键盘进水", description: "喝咖啡时不小心洒在了键盘上，损失了几百块。", effect: { funding: -500, sanity: -5 } },
     { title: "意外发现", description: "在清理数据时，你发现了一个之前被忽略的有趣现象。", effect: { progress: 9, sanity: 10 } }
   ];
+
+  const events = allEvents.filter((e) => {
+    const c = e.effect?.citations;
+    if (typeof c === 'number' && c > 0 && state.papersPublished <= 0) return false;
+    return true;
+  });
 
   // 根据当前阶段筛选或增加特定事件
   if (state.milestone === '毕业答辩') {

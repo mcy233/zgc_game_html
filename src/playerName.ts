@@ -360,8 +360,43 @@ const GIVEN_SLUG = [
 
 const OFFICE_BUILDINGS = ['C5', 'C8', 'C9'] as const;
 
-function rndPick<T>(arr: readonly T[], rnd: () => number): T {
-  return arr[Math.floor(rnd() * arr.length)]!;
+function hashChineseSlug(s: string): string {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    const c = s.codePointAt(i)!;
+    h ^= c;
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36).slice(0, 10);
+}
+
+/** 开局随机工位（与 generatePlayerRunIdentity 一致） */
+export function buildRandomOfficeRoom(): string {
+  const rnd = Math.random;
+  const code = OFFICE_BUILDINGS[Math.floor(rnd() * OFFICE_BUILDINGS.length)]!;
+  const floor = 1 + Math.floor(rnd() * 4);
+  const room = 10 + Math.floor(rnd() * 90);
+  return `${code}-${floor}${String(room).padStart(2, '0')} 工位`;
+}
+
+/**
+ * 根据玩家填写的中文名生成学院邮箱；姓氏在库内则用对应拼音，否则用编码占位；名字在库内则用库 slug，否则用哈希段。
+ */
+export function buildEmailFromDisplayName(name: string): string {
+  const t = name.trim().replace(/\s+/g, '');
+  if (!t) return `phd.${Math.floor(Math.random() * 1e9).toString(36)}@baz.edu.cn`;
+  const first = t[0]!;
+  const si = (SURNAMES as readonly string[]).indexOf(first);
+  const sur = si >= 0 ? SURNAME_PINYIN[si]! : `u${(first.codePointAt(0)! >>> 0).toString(36)}`;
+  const rest = t.slice(1);
+  let given: string;
+  if (!rest) {
+    given = 'phd';
+  } else {
+    const gi = (GIVEN_NAMES as readonly string[]).indexOf(rest);
+    given = gi >= 0 ? GIVEN_SLUG[gi]! : `g${hashChineseSlug(rest)}`;
+  }
+  return `${given}.${sur}@baz.edu.cn`.toLowerCase();
 }
 
 export type PlayerRunIdentity = {
@@ -378,11 +413,7 @@ export function generatePlayerRunIdentity(): PlayerRunIdentity {
   const playerName = SURNAMES[si]! + GIVEN_NAMES[gi]!;
   const local = `${GIVEN_SLUG[gi]}.${SURNAME_PINYIN[si]}`.toLowerCase();
   const playerContactEmail = `${local}@baz.edu.cn`;
-
-  const code = OFFICE_BUILDINGS[Math.floor(rnd() * OFFICE_BUILDINGS.length)]!;
-  const floor = 1 + Math.floor(rnd() * 4);
-  const room = 10 + Math.floor(rnd() * 90);
-  const playerOfficeRoom = `${code}-${floor}${String(room).padStart(2, '0')} 工位`;
+  const playerOfficeRoom = buildRandomOfficeRoom();
 
   return { playerName, playerContactEmail, playerOfficeRoom };
 }

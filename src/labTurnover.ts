@@ -66,7 +66,10 @@ export function applySeniorFarewellGifts(
   };
 
   type Kind = 'funding' | 'gpu' | 'paperProgress' | 'progress' | 'citations' | 'reputation' | 'sanity' | 'asset';
-  const kinds: Kind[] = ['funding', 'gpu', 'paperProgress', 'progress', 'citations', 'reputation', 'sanity', 'asset'];
+  let kinds: Kind[] = ['funding', 'gpu', 'paperProgress', 'progress', 'citations', 'reputation', 'sanity', 'asset'];
+  if (state.papersPublished <= 0) {
+    kinds = kinds.filter((k) => k !== 'citations');
+  }
   const kind = kinds[Math.floor(Math.random() * kinds.length)];
 
   switch (kind) {

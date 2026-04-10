@@ -68,8 +68,8 @@ import {
 import { POTENTIAL_ADVISOR_VISIT_OUTCOMES } from './advisorVisitContent';
 import { pickLeaveLine, pickJoinLine, applySeniorFarewellGifts } from './labTurnover';
 import { generateAdvisorFeedback, generateRandomEvent, generateMomentContent, generateExternalMoment } from './services/geminiService';
-import { buildStudentProfile } from './studentProfileContent';
-import { generatePlayerRunIdentity } from './playerName';
+import { buildStudentProfile, pickRandomUndergradUniversity } from './studentProfileContent';
+import { buildEmailFromDisplayName, buildRandomOfficeRoom, generatePlayerRunIdentity } from './playerName';
 import { scanNewHonorIds, PROFILE_HONOR_BY_ID, listUnlockedHonorsOrdered } from './profileHonors';
 import { RESEARCH_INTEREST_GROUP_COUNT } from './researchInterestGroups';
 import { AssetThumb, AvatarThumb, advisorAvatarKey, labAvatarKey } from './SpriteThumbs';
@@ -298,6 +298,7 @@ function applyQuarterRandomEventEffect(merged: GameState, effect: Record<string,
   for (const [rawKey, delta] of Object.entries(effect)) {
     if (typeof delta !== 'number' || Number.isNaN(delta)) continue;
     if (!(rawKey in merged)) continue;
+    if (rawKey === 'citations' && delta > 0 && merged.papersPublished <= 0) continue;
     const cur = (merged as unknown as Record<string, number>)[rawKey];
     if (typeof cur !== 'number') continue;
     let next = cur + delta;
@@ -341,7 +342,6 @@ function computePaperReview(submitted: number, hasAdvisor: boolean): PaperReview
     lines.push(`${accepted} 篇被录用。`);
     delta.sanity += accepted * 14;
     delta.reputation += accepted * 9;
-    delta.citations += accepted * (12 + Math.floor(Math.random() * 26));
     delta.advisorFavor += accepted * 4;
     delta.progress += accepted * 3;
     if (hasAdvisor) {
@@ -364,18 +364,31 @@ function computePaperReview(submitted: number, hasAdvisor: boolean): PaperReview
   return { submitted, accepted, rejected, lines, delta };
 }
 
+/** 进入新季度时：已发表论文按「上架季度数 × 声望」累积引用，录用当季度不计入本条（由 publication quarter 控制） */
+function computeCitationGrowthOnQuarterTick(prev: GameState, nextQuarter: number): number {
+  const qu = prev.paperPublicationQuarters ?? [];
+  if (qu.length === 0 || prev.papersPublished <= 0) return 0;
+  const repMult = 0.5 + (prev.reputation / 100) * 1.15;
+  let total = 0;
+  const n = Math.min(qu.length, prev.papersPublished);
+  for (let i = 0; i < n; i++) {
+    const pq = qu[i]!;
+    if (pq >= nextQuarter) continue;
+    const seasonsOut = nextQuarter - pq;
+    const ageFactor = 1 + seasonsOut * 0.26 + seasonsOut * seasonsOut * 0.013;
+    total += Math.floor((0.9 + repMult * 2.2) * ageFactor * (0.7 + Math.random() * 0.65));
+  }
+  return total;
+}
+
 export default function App() {
-  const [state, setState] = useState<GameState>(() => {
-    const id = generatePlayerRunIdentity();
-    return {
-      ...INITIAL_STATE,
-      playerName: id.playerName,
-      playerContactEmail: id.playerContactEmail,
-      playerOfficeRoom: id.playerOfficeRoom,
-      signatureQuoteSeed: Math.floor(Math.random() * 0xffffffff),
-      researchInterestGroup: Math.floor(Math.random() * RESEARCH_INTEREST_GROUP_COUNT),
-    };
-  });
+  const [sessionReady, setSessionReady] = useState(false);
+  const [loginNameInput, setLoginNameInput] = useState('');
+  const [state, setState] = useState<GameState>(() => ({
+    ...INITIAL_STATE,
+    signatureQuoteSeed: Math.floor(Math.random() * 0xffffffff),
+    researchInterestGroup: Math.floor(Math.random() * RESEARCH_INTEREST_GROUP_COUNT),
+  }));
   const [activeTab, setActiveTab] = useState<Tab>('HOME');
   const [rightTab, setRightTab] = useState<RightTab>('LOGS');
   const [layoutZone, setLayoutZone] = useState<LayoutZone>('MAIN');
@@ -454,6 +467,7 @@ export default function App() {
       state.playerName,
       state.playerContactEmail,
       state.playerOfficeRoom,
+      state.playerUndergradUniversity,
     ]
   );
 
@@ -517,6 +531,7 @@ export default function App() {
   }, [honorHeadlineOpen]);
 
   useEffect(() => {
+    if (!sessionReady) return;
     try {
       if (!localStorage.getItem(LS_SURVIVAL_KEY)) {
         setSurvivalFromMenu(false);
@@ -525,7 +540,7 @@ export default function App() {
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [sessionReady]);
 
   useEffect(() => {
     if (!showTutorial) return;
@@ -738,7 +753,17 @@ export default function App() {
       const nextQ = prev.quarter + 1;
       const nextY = Math.ceil(nextQ / 4);
       const nextS = SEASONS[(nextQ - 1) % 4];
-      
+
+      const citationGrowth = computeCitationGrowthOnQuarterTick(prev, nextQ);
+      const newAccepted = pb.papersPublished;
+      let pubQ = [...(prev.paperPublicationQuarters ?? [])];
+      if (pubQ.length < prev.papersPublished) {
+        while (pubQ.length < prev.papersPublished) pubQ.push(Math.max(1, prev.quarter));
+      } else if (pubQ.length > prev.papersPublished) {
+        pubQ = pubQ.slice(0, prev.papersPublished);
+      }
+      for (let k = 0; k < newAccepted; k++) pubQ.push(nextQ);
+
       const newState = {
         ...prev,
         quarter: nextQ,
@@ -749,16 +774,26 @@ export default function App() {
         interactionsThisQuarter: [],
         submittedPapers: 0, // Reset after review
         papersPublished: prev.papersPublished + pb.papersPublished,
+        paperPublicationQuarters: pubQ,
         reputation: Math.min(100, Math.max(0, prev.reputation + pb.reputation)),
         sanity: Math.max(0, Math.min(100, prev.sanity + pb.sanity)),
         funding: Math.max(0, prev.funding + pb.funding + 3000), // Base allocation + 论文事件
-        citations: prev.citations + pb.citations,
+        citations: prev.citations + citationGrowth,
         health: Math.max(0, Math.min(100, prev.health + pb.health)),
         progress: Math.min(100, Math.max(0, prev.progress + pb.progress)),
         advisorFavor: Math.min(100, Math.max(0, prev.advisorFavor + pb.advisorFavor)),
         gpuCredits: prev.gpuCredits + 500,
         pendingQuarterChoice: undefined,
         logs: [
+          ...(citationGrowth > 0
+            ? [
+                {
+                  quarter: nextQ,
+                  message: `文献引用跟踪：本季度已发表论文约新增引用 ${citationGrowth} 次（累计增速与学术声望、论文上架季度数相关）。`,
+                  type: 'INFO' as GameLog['type'],
+                } as GameLog,
+              ]
+            : []),
           ...(prDetail
             ? [
                 {
@@ -1014,6 +1049,11 @@ export default function App() {
   const handleAction = (action: Action, force: boolean = false) => {
     if (state.actionsThisQuarter >= ACTIONS_PER_QUARTER) {
       addLog(`本季度行动次数已达上限（${ACTIONS_PER_QUARTER} 次）。请进入下个季度。`, "WARNING");
+      return;
+    }
+
+    if (action.id === 'run_experiments' && action.gpuCost > 0 && state.gpuCredits < action.gpuCost) {
+      addLog('算力额度不足，无法运行本轮实验。请在下季度领取算力补充或通过资产等途径恢复后再试。', 'WARNING');
       return;
     }
 
@@ -1512,9 +1552,13 @@ export default function App() {
       }
     }
     setState(prev => {
+      const citeDrop =
+        prev.papersPublished > 0 ? Math.max(1, Math.floor(prev.citations / prev.papersPublished)) : 0;
       const newState = {
         ...prev,
         papersPublished: prev.papersPublished - 1,
+        paperPublicationQuarters: (prev.paperPublicationQuarters ?? []).slice(0, -1),
+        citations: Math.max(0, prev.citations - citeDrop),
         misconduct: Math.max(0, prev.misconduct - 30),
         reputation: Math.max(0, prev.reputation - 20),
         actionsThisQuarter: prev.actionsThisQuarter + 1,
@@ -1707,8 +1751,68 @@ export default function App() {
   };
 
 
+  const completePlayerLogin = (useCustomName: boolean) => {
+    const raw = loginNameInput.trim().slice(0, 24);
+    const id =
+      useCustomName && raw.length > 0
+        ? {
+            playerName: raw,
+            playerContactEmail: buildEmailFromDisplayName(raw),
+            playerOfficeRoom: buildRandomOfficeRoom(),
+          }
+        : generatePlayerRunIdentity();
+    const uni = pickRandomUndergradUniversity();
+    setState((prev) => ({
+      ...prev,
+      playerName: id.playerName,
+      playerContactEmail: id.playerContactEmail,
+      playerOfficeRoom: id.playerOfficeRoom,
+      playerUndergradUniversity: uni,
+    }));
+    setSessionReady(true);
+  };
+
   return (
     <div className="min-h-dvh min-h-[100svh] flex flex-col bg-[#F8F9FA] text-[#1A1A1A] font-sans selection:bg-black selection:text-white">
+      {!sessionReady && (
+        <div className="fixed inset-0 z-[220] flex items-center justify-center p-6 bg-slate-900/75 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-[28px] bg-white border border-black/5 shadow-2xl p-8 flex flex-col gap-5">
+            <div>
+              <p className="text-[10px] font-mono uppercase tracking-widest text-violet-700/80 mb-1">中关村学院</p>
+              <h2 className="text-xl font-bold text-gray-900">入学登记</h2>
+              <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+                可填写角色姓名（选填）；留空并点「随机起名」将随机生成中文名与邮箱。本科母校、工位等档案信息在登记后固定，不随季度变化。
+              </p>
+            </div>
+            <input
+              type="text"
+              value={loginNameInput}
+              onChange={(e) => setLoginNameInput(e.target.value)}
+              placeholder="例如：王小明（选填，最多 24 字）"
+              maxLength={24}
+              className="w-full rounded-xl border border-black/15 px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-violet-400/50"
+              autoComplete="name"
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => completePlayerLogin(false)}
+                className="py-3 rounded-xl bg-black text-white text-sm font-bold hover:bg-gray-800 transition-colors"
+              >
+                随机起名并开始
+              </button>
+              <button
+                type="button"
+                disabled={!loginNameInput.trim()}
+                onClick={() => completePlayerLogin(true)}
+                className="py-3 rounded-xl border border-black/15 text-sm font-bold text-gray-800 hover:bg-black/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                使用填写姓名
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* Top Navigation Bar */}
       <header
         id="onb-header"
@@ -1752,7 +1856,7 @@ export default function App() {
             </div>
             <button 
               onClick={nextQuarter}
-              disabled={isLoading || isGameOver}
+              disabled={isLoading || isGameOver || !sessionReady}
               className="shrink-0 bg-black text-white px-4 sm:px-6 py-2 sm:py-2.5 rounded-full font-bold text-xs sm:text-sm hover:bg-gray-800 transition-all disabled:opacity-30 flex items-center gap-2 w-full sm:w-auto justify-center"
             >
               {isLoading ? "处理中..." : "进入下个季度"}
@@ -2307,12 +2411,17 @@ export default function App() {
                           )}
                         </div>
                       )}
-                      {ACTIONS.filter(a => a.category === activeTab).map(action => (
+                      {ACTIONS.filter(a => a.category === activeTab).map(action => {
+                        const gpuBlocked =
+                          action.id === 'run_experiments' && action.gpuCost > 0 && state.gpuCredits < action.gpuCost;
+                        return (
                         <button
                           key={action.id}
                           onClick={() => handleAction(action)}
-                          disabled={isGameOver}
-                          className="group bg-white p-5 rounded-2xl border border-black/5 shadow-sm hover:border-black hover:shadow-md transition-all text-left flex justify-between items-center"
+                          disabled={isGameOver || gpuBlocked}
+                          className={`group bg-white p-5 rounded-2xl border border-black/5 shadow-sm transition-all text-left flex justify-between items-center ${
+                            gpuBlocked ? 'opacity-45 cursor-not-allowed' : 'hover:border-black hover:shadow-md'
+                          }`}
                         >
                           <div className="flex-1">
                             <h4 className="font-bold text-lg">{action.label}</h4>
@@ -2329,7 +2438,8 @@ export default function App() {
                             </div>
                           </div>
                         </button>
-                      ))}
+                      );
+                      })}
                     </>
                   )}
                 </motion.div>

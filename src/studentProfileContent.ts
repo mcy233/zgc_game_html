@@ -205,12 +205,6 @@ function buildPublicationsText(state: GameState, phase: Phase): string {
     parts.push(`在审稿件：${sub} 篇，流程含大修、小修以及「邮件假装掉线」等经典关卡。`);
   }
 
-  if (state.credits >= 30) {
-    parts.push(`学分：培养方案 30 分已修满，课表栏可从「求生」切到「点缀」。`);
-  } else {
-    parts.push(`学分：已修 ${state.credits}/30，课表与实验共享同一条时间轴。`);
-  }
-
   if (state.hasAdvisor) {
     parts.push(`合作与指导：${state.advisorName}课题组，日常科研以组内讨论与分任务执行为主。`);
   }
@@ -226,8 +220,15 @@ function buildPublicationsText(state: GameState, phase: Phase): string {
   return parts.join('');
 }
 
-function educationLinesFor(state: GameState, phase: Phase, rnd: () => number): string[] {
-  const uni = pick(['某理工大学', '某综合大学', '某信息科技大学', '某交通大学'], rnd);
+const UNDERGRAD_UNIVERSITIES = ['某理工大学', '某综合大学', '某信息科技大学', '某交通大学'] as const;
+
+/** 登录时调用一次，写入 state.playerUndergradUniversity，全局固定 */
+export function pickRandomUndergradUniversity(): string {
+  return UNDERGRAD_UNIVERSITIES[Math.floor(Math.random() * UNDERGRAD_UNIVERSITIES.length)]!;
+}
+
+function educationLinesFor(state: GameState, phase: Phase): string[] {
+  const uni = state.playerUndergradUniversity?.trim() || '某综合大学';
   const entry = 2026;
   const bsStart = entry - 4;
   const lines: string[] = [
@@ -285,12 +286,13 @@ export function buildStudentProfile(state: GameState): StudentProfileCard {
   const { primary: roleLinePrimary, stageLine } = buildRoleLineParts(state, phase);
   const headline = resolveHomeHeadlineTitle(state);
   const bioBlurb = bioBlurbForPhase(phase, state.year, rnd);
-  const educationLines = educationLinesFor(state, phase, rnd);
+  const educationLines = educationLinesFor(state, phase);
   const researchBullets = getResearchBulletsForPhase(state.researchInterestGroup, phase as ResearchInterestPhase);
   const publicationsText = buildPublicationsText(state, phase);
   const quotePool =
     phase === 'DEFENSE' || phase === 'GRADUATED' ? [...QUOTES, ...QUOTES_DEFENSE_EXTRA] : QUOTES;
-  const quoteRnd = mulberry32(signatureBlockSeed(state));
+  const runSeed = state.signatureQuoteSeed >>> 0;
+  const quoteRnd = mulberry32((signatureBlockSeed(state) ^ runSeed) >>> 0);
   const quote = pick(quotePool, quoteRnd);
 
   const contactEmail =

@@ -68,6 +68,8 @@ export interface GameState {
   playerContactEmail: string;
   /** 工位展示文案，开局随机（楼栋 C5/C8/C9，楼层 1–4） */
   playerOfficeRoom: string;
+  /** 本科母校展示文案，登录时随机一次，之后不随季度变化 */
+  playerUndergradUniversity: string;
   /** 已解锁的个人主页称号 id（见 profileHonors） */
   unlockedHonors: string[];
   /** 称号首次解锁顺序（用于「最新」与荣誉墙排序） */
@@ -75,6 +77,8 @@ export interface GameState {
   /** 首页顶栏：latest=展示最后一次解锁；pinned=固定展示 honorHomePinnedId */
   honorHomeDisplayMode: 'latest' | 'pinned';
   honorHomePinnedId: string | null;
+  /** 开局随机，用于首页个性签名首抽；与季度块种子组合，保证每局开局文案不同 */
+  signatureQuoteSeed: number;
   /** 研究兴趣文案组索引 0..4，开局随机，本局固定 */
   researchInterestGroup: number;
   
@@ -95,6 +99,8 @@ export interface GameState {
   paperWritingProgress: number; // 论文撰写进度 (0-100)
   submittedPapers: number; // 已投稿待审核的论文数量
   papersPublished: number;
+  /** 每篇已发表论文首次计入「已发表」时的季度编号，与 papersPublished 顺序一致 */
+  paperPublicationQuarters: number[];
   citations: number;
   advisorFavor: number;
   milestone: Milestone;
