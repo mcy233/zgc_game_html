@@ -109,6 +109,8 @@ export interface GameState {
   milestone: Milestone;
   /** 仅「顺利毕业」时有效：成就档位 */
   graduationHonor?: GraduationHonor;
+  /** 已达到毕业条件但选择继续深造 */
+  graduationReady?: boolean;
   /** 每学年秋季实验室人事变动，在季度总结弹窗中展示，关闭总结后清除 */
   quarterLabNotice?: {
     title: string;
@@ -145,6 +147,8 @@ export interface GameState {
   seminarComplianceStrikes: number;
   /** 进入新季度时若刚触发讲坛警告，在季度总结顶栏展示 */
   semesterComplianceAlert?: string;
+  /** 学期过半时的讲坛参与温馨提示 */
+  seminarMidSemesterHint?: string;
   /** 上一季度是否与导师有过互动（拜访/随机互动/团队类行动） */
   advisorLastInteractedQuarter: number;
   /** 文献支撑不足时，本季累计点击「跑实验/写论文/出差」次数（文献达标后清零） */

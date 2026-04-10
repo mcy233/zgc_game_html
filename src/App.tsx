@@ -32,11 +32,16 @@ import {
   HeartHandshake,
   ThumbsUp,
   Archive,
-  HelpCircle,
   Mail,
   MapPin,
   ChevronDown,
   Clock,
+  Settings,
+  Eye,
+  EyeOff,
+  RefreshCw,
+  Trash2,
+  BarChart3,
 } from 'lucide-react';
 import {
   GameState,
@@ -69,7 +74,17 @@ import {
 } from './constants';
 import { POTENTIAL_ADVISOR_VISIT_OUTCOMES } from './advisorVisitContent';
 import { pickLeaveLine, pickJoinLine, applySeniorFarewellGifts } from './labTurnover';
-import { generateAdvisorFeedback, generateRandomEvent, generateMomentContent, generateExternalMoment } from './services/geminiService';
+import {
+  generateAdvisorFeedback, generateRandomEvent, generateMomentContent, generateExternalMoment,
+  generateActivityDescription, generateSelfRegDescription, generateInteractionText,
+  generateMisconductLine, generateExperimentWeakLine, generatePaperReviewNarrative,
+  generateProfilePublications, generateProfileQuote, generateGraduationNarrative,
+} from './services/narrativeService';
+import {
+  getLLMConfig, setLLMConfig, isLLMReady, chatCompletion as llmChat,
+  fetchAvailableModels, getTokenStats, clearTokenStats,
+  type LLMConfig, type ModelInfo, type TokenStats, type TokenSource,
+} from './services/llmClient';
 import { buildStudentProfile, pickRandomUndergradUniversity } from './studentProfileContent';
 import { buildEmailFromDisplayName, buildRandomOfficeRoom, generateRandomPlayerName } from './playerName';
 import { scanNewHonorIds, PROFILE_HONOR_BY_ID, listUnlockedHonorsOrdered } from './profileHonors';
@@ -176,28 +191,29 @@ function roundEffectRecord(effect: Record<string, number>): Record<string, numbe
   return out;
 }
 
-function computeGraduationHonor(papers: number, reputation: number): GraduationHonor {
-  if (papers >= 6 && reputation >= 88) return 'MYTHIC';
-  if (papers >= 5 && reputation >= 82) return 'LEGEND';
-  if (papers >= 4 && reputation >= 72) return 'STAR';
-  if (papers >= 3 || reputation >= 78) return 'MERIT';
-  if (papers <= 2 && reputation < 65) return 'SCRAPE';
+function computeGraduationHonor(papers: number, reputation: number, citations: number): GraduationHonor {
+  if (papers >= 6 && reputation >= 88 && citations >= 450) return 'MYTHIC';
+  if (papers >= 5 && reputation >= 82 && citations >= 320) return 'LEGEND';
+  if (papers >= 4 && reputation >= 72 && citations >= 220) return 'STAR';
+  if (papers >= 3 || reputation >= 78 || citations >= 150) return 'MERIT';
+  if (papers <= 2 && reputation < 65 && citations < 150) return 'SCRAPE';
   return 'PASS';
 }
 
 function graduationEnding(
   honor: GraduationHonor,
   papers: number,
-  rep: number
+  rep: number,
+  citations: number
 ): { title: string; body: string; accent: string } {
-  const stats = `你最终以 ${papers} 篇发表论文、学术声望 ${rep} 走过答辩。`;
+  const stats = `你最终以 ${papers} 篇发表论文、${citations} 次引用、学术声望 ${rep} 走过答辩。`;
   switch (honor) {
     case 'MYTHIC':
       return {
         title: '神话级出站',
         body:
           stats +
-          ' 成果与声望兼具，委员会几乎是在为你的下一站教职或顶尖实验室席位预热；走廊里有人小声问你是不是要申人才计划。',
+          '成果、引用与声望三位一体，委员会几乎是在为你的下一站教职或顶尖实验室席位预热；走廊里有人小声问你是不是要申人才计划。',
         accent: 'text-violet-500',
       };
     case 'LEGEND':
@@ -205,25 +221,25 @@ function graduationEnding(
         title: '高光毕业',
         body:
           stats +
-          ' 履历亮眼，导师在组里把你树成标杆；学术圈里你的名字开始和某个方向绑在一起，不再是「某某的学生」。',
+          '履历亮眼，导师在组里把你树成标杆；引用曲线稳步上扬，学术圈里你的名字开始和某个方向绑在一起，不再是「某某的学生」。',
         accent: 'text-amber-500',
       };
     case 'STAR':
       return {
         title: '优秀博士',
-        body: stats + ' 已稳稳超过大多数同届，博士帽戴得理直气壮；博后、大厂研究院或教职 track，你都有得挑。',
+        body: stats + '已稳稳超过大多数同届，博士帽戴得理直气壮；博后、大厂研究院或教职 track，你都有得挑。',
         accent: 'text-emerald-500',
       };
     case 'MERIT':
       return {
         title: '称职博士',
-        body: stats + ' 论文与声望都在中上水平，不算明星选手但也绝非凡人；只有你自己知道这一路有多硬扛过来。',
+        body: stats + '论文、引用与声望都在中上水平，不算明星选手但也绝非凡人；只有你自己知道这一路有多硬扛过来。',
         accent: 'text-teal-600',
       };
     case 'PASS':
       return {
         title: '标准毕业',
-        body: stats + ' 达到委员会底线之上，帽子拿到了，头发也真的少了一圈；往后人生继续徐徐展开。',
+        body: stats + '达到委员会底线之上，帽子拿到了，头发也真的少了一圈；往后人生继续徐徐展开。',
         accent: 'text-slate-600',
       };
     case 'SCRAPE':
@@ -231,7 +247,7 @@ function graduationEnding(
         title: '惊险过关',
         body:
           stats +
-          ' 评委的眉头皱得能夹死蚊子，好在有惊无险；你发誓短期内不想再听到「创新点不足」这五个字。',
+          '评委的眉头皱得能夹死蚊子，好在有惊无险；你发誓短期内不想再听到「创新点不足」这五个字。',
         accent: 'text-orange-600',
       };
   }
@@ -376,9 +392,6 @@ function computePaperReview(submitted: number, hasAdvisor: boolean): PaperReview
     delta.energy -= rejected * 8;
     delta.advisorFavor -= rejected * 2;
   }
-  if (accepted > 0 && rejected > 0) {
-    lines.push('有悲有喜，审稿意见让你体验了一把情绪过山车。');
-  }
   return { submitted, accepted, rejected, lines, delta };
 }
 
@@ -424,6 +437,8 @@ export default function App() {
   const [warningMessage, setWarningMessage] = useState("");
   const [pendingAction, setPendingAction] = useState<{ type: 'ACTION' | 'WALK' | 'SLACK' | 'OUTING' | 'RETRACT', data?: any } | null>(null);
   const [isQuarterChoiceOpen, setIsQuarterChoiceOpen] = useState(false);
+  const [isGraduationChoiceOpen, setIsGraduationChoiceOpen] = useState(false);
+  const [llmGraduationBody, setLlmGraduationBody] = useState<string | null>(null);
   /** 与当前列表顶部动态 id 比对，用于朋友圈未读红点 */
   const lastSeenTopMomentIdRef = useRef<string | null>(null);
   /** 季度总结本次打开时抽一条「培养主线」，关闭后清空；避免同一轮重渲染反复抽签 */
@@ -446,6 +461,16 @@ export default function App() {
   const [showSurvivalGuide, setShowSurvivalGuide] = useState(false);
   const [survivalFromMenu, setSurvivalFromMenu] = useState(false);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [showLLMSettings, setShowLLMSettings] = useState(false);
+  const [llmSettingsTab, setLlmSettingsTab] = useState<'config' | 'stats'>('config');
+  const [llmCfg, setLlmCfg] = useState<LLMConfig>(getLLMConfig);
+  const [llmKeyVisible, setLlmKeyVisible] = useState(false);
+  const [llmTestStatus, setLlmTestStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
+  const [llmTestMsg, setLlmTestMsg] = useState('');
+  const [llmModels, setLlmModels] = useState<ModelInfo[]>([]);
+  const [llmModelFetching, setLlmModelFetching] = useState(false);
+  const [llmModelDropdownOpen, setLlmModelDropdownOpen] = useState(false);
+  const [llmTokenStats, setLlmTokenStats] = useState<TokenStats>(getTokenStats);
   const [tutorialIndex, setTutorialIndex] = useState(0);
   const [helpMenuOpen, setHelpMenuOpen] = useState(false);
 
@@ -489,6 +514,36 @@ export default function App() {
     ]
   );
 
+  const [llmProfile, setLlmProfile] = useState<{
+    publications?: string; quote?: string;
+  }>({});
+
+  useEffect(() => {
+    if (!isLLMReady()) { setLlmProfile({}); return; }
+    let cancelled = false;
+    (async () => {
+      try {
+        const p = studentProfile;
+        const [pub, quote] = await Promise.all([
+          generateProfilePublications(state, p.publicationsText),
+          generateProfileQuote(state, p.quote),
+        ]);
+        if (!cancelled) setLlmProfile({ publications: pub, quote });
+      } catch { /* keep local */ }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.quarter, state.milestone, state.papersPublished, state.citations]);
+
+  useEffect(() => {
+    if (!isGameOver || state.milestone !== '顺利毕业' || !state.graduationHonor) return;
+    const ge = graduationEnding(state.graduationHonor, state.papersPublished, state.reputation, state.citations);
+    void generateGraduationNarrative(state, ge.title, ge.body).then(body => {
+      if (body !== ge.body) setLlmGraduationBody(body);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isGameOver]);
+
   useEffect(() => {
     setState((prev) => {
       const ids = scanNewHonorIds(prev);
@@ -520,13 +575,23 @@ export default function App() {
     const prev = prevUnlockedHonorsRef.current;
     const added = state.unlockedHonors.filter((id) => !prev.includes(id));
     prevUnlockedHonorsRef.current = state.unlockedHonors;
-    if (added.length === 0) return;
     for (const id of added) {
       const h = PROFILE_HONOR_BY_ID[id];
       if (h) honorPopupQueueRef.current.push({ popupTitle: h.popupTitle, unlockBody: h.unlockBody });
     }
-    setHonorPopup((p) => p ?? honorPopupQueueRef.current.shift() ?? null);
   }, [state.unlockedHonors]);
+
+  useEffect(() => {
+    if (honorPopup) return;
+    if (isEventModalOpen || isSummaryModalOpen || isQuarterChoiceOpen || isGraduationChoiceOpen || isGameOver || isWarningModalOpen || isAssetOfferModalOpen) return;
+    const next = honorPopupQueueRef.current[0];
+    if (!next) return;
+    const timer = setTimeout(() => {
+      honorPopupQueueRef.current.shift();
+      setHonorPopup(next);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [honorPopup, isEventModalOpen, isSummaryModalOpen, isQuarterChoiceOpen, isGraduationChoiceOpen, isGameOver, isWarningModalOpen, isAssetOfferModalOpen, state.unlockedHonors]);
 
   const dismissHonorPopup = useCallback(() => {
     const next = honorPopupQueueRef.current.shift();
@@ -550,14 +615,8 @@ export default function App() {
 
   useEffect(() => {
     if (!sessionReady) return;
-    try {
-      if (!localStorage.getItem(LS_SURVIVAL_KEY)) {
-        setSurvivalFromMenu(false);
-        setShowSurvivalGuide(true);
-      }
-    } catch {
-      /* ignore */
-    }
+    setSurvivalFromMenu(false);
+    setShowSurvivalGuide(true);
   }, [sessionReady]);
 
   useEffect(() => {
@@ -576,21 +635,9 @@ export default function App() {
   }, [showTutorial, tutorialIndex, tutorialSteps.length]);
 
   const acknowledgeSurvival = () => {
-    try {
-      localStorage.setItem(LS_SURVIVAL_KEY, '1');
-    } catch {
-      /* ignore */
-    }
     setShowSurvivalGuide(false);
-    try {
-      if (!localStorage.getItem(LS_TUTORIAL_KEY)) {
-        setTutorialIndex(0);
-        setShowTutorial(true);
-      }
-    } catch {
-      setTutorialIndex(0);
-      setShowTutorial(true);
-    }
+    setTutorialIndex(0);
+    setShowTutorial(true);
   };
 
   const closeSurvivalOnly = () => {
@@ -712,6 +759,21 @@ export default function App() {
     /* 超时未毕业：在 nextQuarter 中已写入 milestone「延毕退学」并结算，此处不再重复判定 */
   }, [addLog]);
 
+  const executeGraduation = useCallback(() => {
+    setIsGraduationChoiceOpen(false);
+    setState(prev => {
+      const honor = computeGraduationHonor(prev.papersPublished, prev.reputation, prev.citations);
+      return { ...prev, milestone: '顺利毕业' as const, graduationHonor: honor };
+    });
+    addLog(`答辩通过！你完成了在${BZA.short}这一段项目制博士旅程。恭喜你，博士！`, "SUCCESS");
+    setIsGameOver(true);
+  }, [addLog]);
+
+  const continueStudying = useCallback(() => {
+    setIsGraduationChoiceOpen(false);
+    addLog('你决定继续深造，争取更高的学术成就。随时可以点击「申请毕业」完成答辩。', "INFO");
+  }, [addLog]);
+
   const applyQuarterChoice = useCallback(
     (scenarioTitle: string, opt: PendingQuarterChoice['options'][number]) => {
       setState(prev => {
@@ -753,6 +815,10 @@ export default function App() {
     setIsLoading(true);
 
     const prDetail = state.submittedPapers > 0 ? computePaperReview(state.submittedPapers, state.hasAdvisor) : null;
+    if (prDetail) {
+      const reviewNarrative = await generatePaperReviewNarrative(prDetail.submitted, prDetail.accepted, prDetail.rejected, state);
+      if (reviewNarrative) prDetail.lines.push(reviewNarrative);
+    }
     setPaperReviewDetail(prDetail);
 
     setState(prev => {
@@ -796,6 +862,7 @@ export default function App() {
         seminarComplianceStrikes: prev.seminarComplianceStrikes ?? 0,
         advisorLastInteractedQuarter: prev.advisorLastInteractedQuarter ?? 0,
         semesterComplianceAlert: undefined,
+        seminarMidSemesterHint: undefined,
         submittedPapers: 0, // Reset after review
         papersPublished: prev.papersPublished + pb.papersPublished,
         paperPublicationQuarters: pubQ,
@@ -941,6 +1008,30 @@ export default function App() {
         }
       }
 
+      // 学期过半温馨提示（进入第 2/4/6/8 季度时，提醒本学期讲坛进度）
+      if ([2, 4, 6, 8].includes(nextQ)) {
+        const arr = newState.collegeActivityByQuarter ?? [];
+        const firstQIdx = nextQ - 2;
+        const done = arr[firstQIdx] ?? 0;
+        const carry = newState.seminarCarryoverDeficit ?? 0;
+        const required = SEMINAR_REQUIRED_PER_SEMESTER + carry;
+        const remaining = Math.max(0, required - done);
+        if (remaining > 0) {
+          const hints = done === 0
+            ? [
+                `学期过半了，你的「校园与讲坛」参与次数还是零蛋。培养办的表格不会替你打勾，本学期还需 ${remaining} 次。`,
+                `半学期了，讲坛那边签到册上连你的名字都没见过。赶紧安排 ${remaining} 次「校园与讲坛」，不然培养办的邮件可比导师的催命连环 call 还准时。`,
+                `温馨提示：智汇讲坛的茶歇已经被蹭走好几轮了，你却一次都没出现。本学期还差 ${remaining} 次，别等到被培养办约谈。`,
+              ]
+            : [
+                `学期已经过半，你参加了 ${done} 次「校园与讲坛」，还差 ${remaining} 次才达标。茶歇不会等你，学分也不会。`,
+                `半学期进度报告：讲坛参与 ${done}/${required}，剩余额度 ${remaining} 次。建议趁着还有时间，把打卡安排上。`,
+                `本学期「校园与讲坛」已完成 ${done} 次，距离达标还差 ${remaining} 次。培养档案可不认「下次一定」这种话。`,
+              ];
+          newState.seminarMidSemesterHint = hints[Math.floor(Math.random() * hints.length)];
+        }
+      }
+
       // 上季度未与导师/同门互动则好感略降
       const endedQ = prev.quarter;
       if (newState.hasAdvisor) {
@@ -1019,17 +1110,19 @@ export default function App() {
         newState.progress = 0;
         transitionMessage = "大论文初稿居然写完了，堪称医学奇迹。准备迎接学院学位与答辩相关程序的考验吧！";
       } else if (newState.milestone === '毕业答辩') {
-        if (newState.reputation < 60) {
+        if (newState.graduationReady) {
+          newState.progress = 99;
+        } else if (newState.reputation < 60) {
           transitionMessage = "学术声望偏低，答辩环节难以体现学院对 AI 领军人才的期待。多产出、多交流，别让大家觉得你在「混项目」。";
           newState.progress = 99;
         } else if (newState.papersPublished < 2) {
           transitionMessage = "毕业答辩需要至少发表 2 篇论文。你还差一点火候，再去实验室搬会儿砖吧。";
           newState.progress = 99;
         } else {
-          newState.milestone = '顺利毕业';
-          newState.graduationHonor = computeGraduationHonor(newState.papersPublished, newState.reputation);
-          setIsGameOver(true);
-          transitionMessage = `答辩通过！你完成了在${BZA.short}这一段项目制博士旅程。恭喜你，博士！`;
+          newState.graduationReady = true;
+          newState.progress = 99;
+          transitionMessage = `你已满足毕业答辩的基本要求！但是否现在就戴上博士帽，还是留下来争取更耀眼的履历？`;
+          queueMicrotask(() => setIsGraduationChoiceOpen(true));
         }
       }
     }
@@ -1052,9 +1145,16 @@ export default function App() {
       newState.milestone = '中期拖延退学';
       setIsGameOver(true);
     } else if (newState.quarter > 16 && newState.milestone !== '顺利毕业') {
-      addLog(`培养年限已满，你未完成毕业答辩与学位要求。按${BZA.short}规定办理延毕或退学相关程序。`, "DANGER");
-      newState.milestone = '延毕退学';
-      setIsGameOver(true);
+      if (newState.graduationReady) {
+        newState.milestone = '顺利毕业';
+        newState.graduationHonor = computeGraduationHonor(newState.papersPublished, newState.reputation, newState.citations);
+        addLog(`培养年限已满，你自动进入答辩流程——好在条件早已达标。恭喜毕业！`, "SUCCESS");
+        setIsGameOver(true);
+      } else {
+        addLog(`培养年限已满，你未完成毕业答辩与学位要求。按${BZA.short}规定办理延毕或退学相关程序。`, "DANGER");
+        newState.milestone = '延毕退学';
+        setIsGameOver(true);
+      }
     }
 
     if (Math.random() < 0.4) {
@@ -1200,7 +1300,6 @@ export default function App() {
 
   const executeAction = async (action: Action, sanityCost: number, healthCost: number, progressGainMod: number) => {
     setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 600));
 
     const profile = ADVISOR_PROFILES[state.advisorType];
     const progressMult = state.hasAdvisor ? profile.progressMultiplier : 1.0;
@@ -1214,9 +1313,6 @@ export default function App() {
     const writePaperMisconductHit =
       action.id === 'write_paper' && Math.random() < 0.2 + (1 - litFactor) * 0.42;
     const writePaperMisconductDelta = writePaperMisconductHit ? rollWritePaperMisconductDelta() : 0;
-    const writePaperMisconductLine = writePaperMisconductHit
-      ? WRITE_PAPER_MISCONDUCT_NARRATIVES[Math.floor(Math.random() * WRITE_PAPER_MISCONDUCT_NARRATIVES.length)]
-      : '';
     /** 出差报告：会场风评对嫌疑的加减，预先掷骰以便写入影响列表 */
     let conferenceOutcome: { dMisconduct: number; dReputation: number } | null = null;
     let conferenceDoubt = false;
@@ -1259,6 +1355,14 @@ export default function App() {
     const conferenceNegative =
       conferenceDoubt ||
       (conferenceOutcome !== null && conferenceOutcome.dMisconduct > 0);
+
+    const descs = action.descriptions && action.descriptions.length > 0 ? action.descriptions : [action.description];
+    const [llmDesc, llmMisconductLine, llmWeakLitLine] = await Promise.all([
+      generateActivityDescription(action.label, descs, state),
+      writePaperMisconductHit ? generateMisconductLine(state) : Promise.resolve(''),
+      (action.id === 'run_experiments' && litFactor < 0.999) ? generateExperimentWeakLine(state) : Promise.resolve(''),
+    ]);
+    const writePaperMisconductLine = llmMisconductLine;
 
     setState(prev => {
       const newState = { ...prev };
@@ -1425,8 +1529,7 @@ export default function App() {
       return newState;
     });
 
-    const desc = action.descriptions ? action.descriptions[Math.floor(Math.random() * action.descriptions.length)] : action.description;
-    addLog(desc);
+    addLog(llmDesc);
     addLog(`执行：${action.label}`);
 
     const effect: Record<string, number> = {};
@@ -1458,16 +1561,12 @@ export default function App() {
     if (literaturePaperDelta > 0) effect.paperWritingProgress = literaturePaperDelta;
     if (scaledExperimentPaperDelta > 0) effect.paperWritingProgress = scaledExperimentPaperDelta;
 
-    const randomDesc = action.descriptions && action.descriptions.length > 0 
-      ? action.descriptions[Math.floor(Math.random() * action.descriptions.length)]
-      : action.description;
-
     let eventDescription =
       action.id === 'write_paper' && writePaperMisconductHit && writePaperMisconductLine
-        ? `${randomDesc}\n\n${writePaperMisconductLine}`
-        : randomDesc;
-    if (action.id === 'run_experiments' && litFactor < 0.999) {
-      eventDescription = `${eventDescription}\n\n${pickExperimentWeakLiteratureLine()}`;
+        ? `${llmDesc}\n\n${writePaperMisconductLine}`
+        : llmDesc;
+    if (llmWeakLitLine) {
+      eventDescription = `${eventDescription}\n\n${llmWeakLitLine}`;
     }
 
     const hadLowLitNegativeNarrative =
@@ -1488,7 +1587,7 @@ export default function App() {
   };
 
   // Self-Regulation Actions
-  const handleCampusWalk = (force: boolean = false) => {
+  const handleCampusWalk = async (force: boolean = false) => {
     if (state.actionsThisQuarter >= ACTIONS_PER_QUARTER) {
       addLog("本季度行动次数已达上限。", "WARNING");
       return;
@@ -1497,6 +1596,14 @@ export default function App() {
       addLog("本季度校园漫步次数已达上限。", "WARNING");
       return;
     }
+    setIsLoading(true);
+    const walkDescs = [
+      "在中关村学院园区里散了散步，心情舒畅了些。远处工地与玻璃楼同框，你突然觉得论文也不是那么难写。",
+      "从教学楼晃到报告厅楼下，落叶纷飞，你思考人生意义，最后发现还是干饭最有意义。",
+      "绕着操场走了几圈，看着挥汗跑步的同学，你感叹年轻真好，不像你已经老死在 GPU 前面。",
+      "在公共自习区门口坐了一会儿，看进进出出的博士生，你觉得自己像一个学术幽灵。"
+    ];
+    const mainDesc = await generateSelfRegDescription('walk', walkDescs, state);
     setState(prev => {
       const newState = {
         ...prev,
@@ -1506,17 +1613,8 @@ export default function App() {
         health: Math.min(100, prev.health + 5),
         energy: Math.min(100, prev.energy + 15),
       };
-      
-      const walkDescs = [
-        "在中关村学院园区里散了散步，心情舒畅了些。远处工地与玻璃楼同框，你突然觉得论文也不是那么难写。",
-        "从教学楼晃到报告厅楼下，落叶纷飞，你思考人生意义，最后发现还是干饭最有意义。",
-        "绕着操场走了几圈，看着挥汗跑步的同学，你感叹年轻真好，不像你已经老死在 GPU 前面。",
-        "在公共自习区门口坐了一会儿，看进进出出的博士生，你觉得自己像一个学术幽灵。"
-      ];
-      let mainDesc = walkDescs[Math.floor(Math.random() * walkDescs.length)];
-      
+
       let extraDesc = "";
-      // Extra Event: Meet someone
       if (Math.random() < 0.2) {
         const gain = 5;
         newState.reputation = Math.min(100, newState.reputation + gain);
@@ -1540,9 +1638,10 @@ export default function App() {
       tickExternalMomentAfterAction(prev, newState);
       return newState;
     });
+    setIsLoading(false);
   };
 
-  const handleInteraction = (personId: string, isAdvisor: boolean = false) => {
+  const handleInteraction = async (personId: string, isAdvisor: boolean = false) => {
     if (state.actionsThisQuarter >= ACTIONS_PER_QUARTER) {
       addLog("本季度行动次数已达上限。", "WARNING");
       return;
@@ -1555,10 +1654,10 @@ export default function App() {
       addLog("精力不足，无法进行互动。", "WARNING");
       return;
     }
-
+    setIsLoading(true);
     const interactions = isAdvisor ? ADVISOR_INTERACTIONS : LABMATE_INTERACTIONS;
     const interaction = interactions[Math.floor(Math.random() * interactions.length)];
-    const text = interaction.texts[Math.floor(Math.random() * interaction.texts.length)];
+    const text = await generateInteractionText(interaction.label, interaction.texts, isAdvisor, state);
     const eff = interaction.effect as Record<string, number>;
     
     setState(prev => {
@@ -1598,9 +1697,10 @@ export default function App() {
       effect: roundEffectRecord(interaction.effect as Record<string, number>),
     });
     setIsEventModalOpen(true);
+    setIsLoading(false);
   };
 
-  const handleSlackOff = (force: boolean = false) => {
+  const handleSlackOff = async (force: boolean = false) => {
     if (state.actionsThisQuarter >= ACTIONS_PER_QUARTER) {
       addLog("本季度行动次数已达上限。", "WARNING");
       return;
@@ -1613,6 +1713,14 @@ export default function App() {
         return;
       }
     }
+    setIsLoading(true);
+    const slackDescs = [
+      "打开了游戏，刷起了短视频。虽然内心充满罪恶感，但多巴胺的分泌让你暂时忘记了导师的催促。",
+      "在工位上盯着天花板发呆，脑子里全是中午吃什么的终极哲学问题。",
+      "偷偷溜出实验室去喝了杯奶茶，感觉灵魂得到了短暂的救赎。",
+      "在宿舍里睡了个昏天黑地的午觉，醒来后发现天都黑了，罪恶感爆棚。"
+    ];
+    const mainDesc = await generateSelfRegDescription('slack', slackDescs, state);
     setState(prev => {
       const newState = {
         ...prev,
@@ -1622,16 +1730,7 @@ export default function App() {
         health: Math.max(0, prev.health - 2),
       };
 
-      const slackDescs = [
-        "打开了游戏，刷起了短视频。虽然内心充满罪恶感，但多巴胺的分泌让你暂时忘记了导师的催促。",
-        "在工位上盯着天花板发呆，脑子里全是中午吃什么的终极哲学问题。",
-        "偷偷溜出实验室去喝了杯奶茶，感觉灵魂得到了短暂的救赎。",
-        "在宿舍里睡了个昏天黑地的午觉，醒来后发现天都黑了，罪恶感爆棚。"
-      ];
-      let mainDesc = slackDescs[Math.floor(Math.random() * slackDescs.length)];
-
       let extraDesc = "";
-      // Extra Event: Caught by advisor
       if (prev.hasAdvisor && Math.random() < 0.15) {
         const loss = 10;
         newState.advisorFavor = Math.max(0, newState.advisorFavor - loss);
@@ -1651,9 +1750,10 @@ export default function App() {
       tickExternalMomentAfterAction(prev, newState);
       return newState;
     });
+    setIsLoading(false);
   };
 
-  const handleOuting = (force: boolean = false) => {
+  const handleOuting = async (force: boolean = false) => {
     if (state.actionsThisQuarter >= ACTIONS_PER_QUARTER) {
       addLog("本季度行动次数已达上限。", "WARNING");
       return;
@@ -1672,6 +1772,14 @@ export default function App() {
         return;
       }
     }
+    setIsLoading(true);
+    const outingDescs = [
+      "去看了场电影，吃了一顿大餐。外面的世界如此精彩，让你产生了一种想要退学去打工的冲动。",
+      "去郊外爬了次山，呼吸着新鲜空气，你感觉肺里的学术灰尘都被洗干净了。",
+      "逛了一整天商场，虽然钱包空了，但心情确实变好了不少。",
+      "去参加了一场漫展，看着满目的二次元，你觉得现实世界还是很有趣的。"
+    ];
+    const mainDesc = await generateSelfRegDescription('outing', outingDescs, state);
     setState(prev => {
       const newState = {
         ...prev,
@@ -1682,16 +1790,7 @@ export default function App() {
         health: Math.min(100, prev.health + 15),
       };
 
-      const outingDescs = [
-        "去看了场电影，吃了一顿大餐。外面的世界如此精彩，让你产生了一种想要退学去打工的冲动。",
-        "去郊外爬了次山，呼吸着新鲜空气，你感觉肺里的学术灰尘都被洗干净了。",
-        "逛了一整天商场，虽然钱包空了，但心情确实变好了不少。",
-        "去参加了一场漫展，看着满目的二次元，你觉得现实世界还是很有趣的。"
-      ];
-      let mainDesc = outingDescs[Math.floor(Math.random() * outingDescs.length)];
-
       let extraDesc = "";
-      // Extra Event: Inspiration
       if (Math.random() < 0.15) {
         newState.progress = Math.min(100, newState.progress + 6);
         extraDesc = " 在外出的路上突然灵光一闪，想到了困扰已久的实验难题！科研进度增加。";
@@ -1714,6 +1813,7 @@ export default function App() {
       tickExternalMomentAfterAction(prev, newState);
       return newState;
     });
+    setIsLoading(false);
   };
 
   const handleRetractPaper = (force: boolean = false) => {
@@ -2072,9 +2172,9 @@ export default function App() {
                 className="p-2 rounded-full border border-black/10 text-gray-500 hover:text-black hover:bg-black/5 transition-colors"
                 aria-expanded={helpMenuOpen}
                 aria-haspopup="menu"
-                title="帮助：入学须知与界面导览"
+                title="设置"
               >
-                <HelpCircle size={20} strokeWidth={2} />
+                <Settings size={20} strokeWidth={2} />
               </button>
               {helpMenuOpen && (
                 <>
@@ -2111,6 +2211,18 @@ export default function App() {
                       }}
                     >
                       界面导览
+                    </button>
+                    <div className="border-t border-black/5 my-0.5" />
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className="w-full px-3 py-2.5 text-left text-xs font-bold text-gray-700 hover:bg-black/5 flex items-center gap-1.5"
+                      onClick={() => {
+                        setShowLLMSettings(true);
+                        setHelpMenuOpen(false);
+                      }}
+                    >
+                      AI 文案设置
                     </button>
                   </div>
                 </>
@@ -2393,7 +2505,7 @@ export default function App() {
 
                     <div className="rounded-2xl bg-black/[0.03] border border-black/5 border-t-4 border-t-slate-400 p-4 space-y-3">
                       <p className="text-[10px] font-mono uppercase opacity-50 mb-0">论文与投稿</p>
-                      <p className="text-sm text-gray-800 leading-relaxed">{studentProfile.publicationsText}</p>
+                      <p className="text-sm text-gray-800 leading-relaxed">{llmProfile.publications || studentProfile.publicationsText}</p>
                     </div>
 
                     <div className="relative py-4 px-2">
@@ -2401,7 +2513,7 @@ export default function App() {
                         &ldquo;
                       </span>
                       <p className="text-center text-sm sm:text-base italic text-gray-600 leading-relaxed px-6 sm:px-10">
-                        {studentProfile.quote}
+                        {llmProfile.quote || studentProfile.quote}
                       </p>
                       <span className="pointer-events-none select-none text-5xl sm:text-6xl text-black/[0.07] font-serif leading-none absolute right-0 bottom-0">
                         &rdquo;
@@ -2837,6 +2949,15 @@ export default function App() {
               >
                 {isLoading ? '处理中...' : '进入下个季度'}
               </button>
+              {state.graduationReady && !isGameOver && (
+                <button
+                  type="button"
+                  onClick={() => setIsGraduationChoiceOpen(true)}
+                  className="bg-gradient-to-r from-violet-600 to-indigo-600 text-white px-6 py-2.5 rounded-full font-bold text-sm hover:from-violet-700 hover:to-indigo-700 transition-all shadow-md animate-pulse"
+                >
+                  🎓 申请毕业
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -2891,6 +3012,15 @@ export default function App() {
                 >
                   {isLoading ? '处理中...' : '进入下个季度'}
                 </button>
+                {state.graduationReady && !isGameOver && (
+                  <button
+                    type="button"
+                    onClick={() => setIsGraduationChoiceOpen(true)}
+                    className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-full py-2 px-2 text-[10px] font-bold leading-tight hover:from-violet-700 hover:to-indigo-700 active:scale-[0.98] transition-all shadow-md"
+                  >
+                    🎓 毕业
+                  </button>
+                )}
               </>
             ) : (
               <div className="flex flex-col items-center justify-center gap-0.5 py-2 text-[9px] text-gray-400 text-center leading-tight">
@@ -2980,6 +3110,72 @@ export default function App() {
       </AnimatePresence>
 
       <AnimatePresence>
+        {isGraduationChoiceOpen && (
+          <div className="fixed inset-0 z-[56] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white p-8 rounded-[40px] max-w-md w-full shadow-2xl border border-violet-200 flex flex-col gap-5"
+            >
+              <div className="flex items-center justify-center text-violet-600">
+                <GraduationCap size={48} />
+              </div>
+              <h2 className="text-2xl font-bold text-center italic font-serif">毕业抉择</h2>
+              <p className="text-sm text-gray-600 leading-relaxed text-center">
+                你已满足答辩的基本条件。是现在就走向终点，还是留在学院继续打磨自己的履历？
+              </p>
+              {(() => {
+                const previewHonor = computeGraduationHonor(state.papersPublished, state.reputation, state.citations);
+                const previewEnding = graduationEnding(previewHonor, state.papersPublished, state.reputation, state.citations);
+                return (
+                  <div className="bg-violet-50 border border-violet-200/80 p-4 rounded-2xl space-y-3">
+                    <p className="text-[10px] font-mono uppercase tracking-wider text-violet-700/85">当前毕业评价预览</p>
+                    <div className="grid grid-cols-3 gap-3 text-center">
+                      <div>
+                        <p className="text-[10px] font-mono opacity-50">发表论文</p>
+                        <p className="text-lg font-bold">{state.papersPublished}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-mono opacity-50">总引用</p>
+                        <p className="text-lg font-bold">{state.citations}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-mono opacity-50">学术声望</p>
+                        <p className="text-lg font-bold">{state.reputation}</p>
+                      </div>
+                    </div>
+                    <p className={`text-center font-bold ${previewEnding.accent}`}>
+                      预计评级：{previewEnding.title}
+                    </p>
+                  </div>
+                );
+              })()}
+              <div className="flex flex-col gap-3">
+                <button
+                  type="button"
+                  onClick={executeGraduation}
+                  className="w-full py-4 bg-gradient-to-r from-violet-600 to-indigo-600 text-white rounded-2xl font-bold hover:from-violet-700 hover:to-indigo-700 transition-colors shadow-md"
+                >
+                  🎓 以当前状态毕业
+                </button>
+                <button
+                  type="button"
+                  onClick={continueStudying}
+                  className="w-full py-4 bg-gray-100 text-gray-800 rounded-2xl font-bold hover:bg-gray-200 transition-colors border border-gray-200"
+                >
+                  继续深造，争取更好的评价
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400 text-center leading-relaxed">
+                继续深造期间可随时点击「申请毕业」完成答辩。培养年限到期（第 16 季度）将自动答辩。
+              </p>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
         {isSummaryModalOpen && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <motion.div 
@@ -3011,6 +3207,12 @@ export default function App() {
                   <div className="bg-rose-50 border border-rose-200/90 p-4 rounded-2xl flex flex-col gap-2">
                     <p className="text-[10px] font-mono uppercase tracking-wider text-rose-800/90">培养办 · 讲坛参与</p>
                     <p className="text-sm text-rose-950/90 leading-relaxed whitespace-pre-wrap">{state.semesterComplianceAlert}</p>
+                  </div>
+                )}
+                {state.seminarMidSemesterHint && (
+                  <div className="bg-sky-50 border border-sky-200/80 p-4 rounded-2xl flex flex-col gap-2">
+                    <p className="text-[10px] font-mono uppercase tracking-wider text-sky-700/85">温馨提示 · 讲坛参与</p>
+                    <p className="text-sm text-sky-950/90 leading-relaxed">{state.seminarMidSemesterHint}</p>
                   </div>
                 )}
                 {state.quarterLabNotice && (
@@ -3094,7 +3296,7 @@ export default function App() {
                 onClick={() => {
                   setIsSummaryModalOpen(false);
                   setPaperReviewDetail(null);
-                  setState(s => ({ ...s, quarterLabNotice: undefined, semesterComplianceAlert: undefined }));
+                  setState(s => ({ ...s, quarterLabNotice: undefined, semesterComplianceAlert: undefined, seminarMidSemesterHint: undefined }));
                 }}
                 className="w-full py-4 bg-black text-white rounded-2xl font-bold hover:bg-gray-800 transition-colors"
               >
@@ -3118,7 +3320,8 @@ export default function App() {
                   const ge = graduationEnding(
                     state.graduationHonor,
                     state.papersPublished,
-                    state.reputation
+                    state.reputation,
+                    state.citations
                   );
                   return (
                     <>
@@ -3126,7 +3329,7 @@ export default function App() {
                         <Trophy size={80} />
                       </div>
                       <h2 className="text-4xl font-bold italic font-serif">{ge.title}</h2>
-                      <p className="text-gray-600 leading-relaxed">{ge.body}</p>
+                      <p className="text-gray-600 leading-relaxed">{llmGraduationBody || ge.body}</p>
                       <p className="text-xs font-mono text-black/40">{BZA.short} · 博士学位 · 已授予</p>
                     </>
                   );
@@ -3164,6 +3367,14 @@ export default function App() {
                 <div>
                   <p className="text-[10px] font-mono uppercase opacity-40">发表论文</p>
                   <p className="text-2xl font-bold">{state.papersPublished}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-mono uppercase opacity-40">总引用</p>
+                  <p className="text-2xl font-bold">{state.citations}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] font-mono uppercase opacity-40">学术声望</p>
+                  <p className="text-2xl font-bold">{state.reputation}</p>
                 </div>
               </div>
 
@@ -3335,6 +3546,341 @@ export default function App() {
                   </button>
                 </div>
               </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── LLM 文案设置面板 ── */}
+      <AnimatePresence>
+        {showLLMSettings && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/40"
+              onClick={() => setShowLLMSettings(false)}
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 sm:p-8 flex flex-col gap-5 max-h-[90vh] overflow-y-auto"
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold flex items-center gap-2"><Settings size={18} /> AI 文案设置</h2>
+                <button type="button" onClick={() => setShowLLMSettings(false)} className="text-gray-400 hover:text-black text-xl leading-none">&times;</button>
+              </div>
+
+              {/* 分页 Tab */}
+              <div className="flex bg-gray-100 p-1 rounded-xl">
+                <button
+                  type="button"
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 ${llmSettingsTab === 'config' ? 'bg-white shadow-sm text-black' : 'text-gray-500'}`}
+                  onClick={() => setLlmSettingsTab('config')}
+                >
+                  <Settings size={13} /> 配置
+                </button>
+                <button
+                  type="button"
+                  className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 ${llmSettingsTab === 'stats' ? 'bg-white shadow-sm text-black' : 'text-gray-500'}`}
+                  onClick={() => { setLlmSettingsTab('stats'); setLlmTokenStats(getTokenStats()); }}
+                >
+                  <BarChart3 size={13} /> Token 统计
+                </button>
+              </div>
+
+              {llmSettingsTab === 'config' ? (<>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                开启后，所有活动描述、导师寄语、随机事件、互动文案、朋友圈、首页档案等均由大模型实时生成，永不重复。支持 OpenAI 兼容格式的 API。
+              </p>
+
+              {/* 总开关 */}
+              <label className="flex items-center justify-between gap-3 p-3 rounded-xl bg-gray-50 border border-black/5 cursor-pointer select-none">
+                <span className="text-sm font-bold">启用大模型文案</span>
+                <div
+                  className={`relative w-11 h-6 rounded-full transition-colors ${llmCfg.enabled ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                  onClick={() => {
+                    const next = setLLMConfig({ enabled: !llmCfg.enabled });
+                    setLlmCfg(next);
+                  }}
+                >
+                  <div className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${llmCfg.enabled ? 'translate-x-5' : ''}`} />
+                </div>
+              </label>
+
+              {/* API Key */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-gray-600">API Key</label>
+                <div className="relative">
+                  <input
+                    type={llmKeyVisible ? 'text' : 'password'}
+                    value={llmCfg.apiKey}
+                    onChange={(e) => {
+                      const next = setLLMConfig({ apiKey: e.target.value });
+                      setLlmCfg(next);
+                    }}
+                    placeholder="sk-..."
+                    className="w-full text-sm border border-black/10 rounded-xl px-3 py-2.5 pr-10 font-mono focus:outline-none focus:ring-2 focus:ring-black/20"
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black"
+                    onClick={() => setLlmKeyVisible((v) => !v)}
+                  >
+                    {llmKeyVisible ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Base URL */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-gray-600">API Base URL</label>
+                <input
+                  type="text"
+                  value={llmCfg.baseUrl}
+                  onChange={(e) => {
+                    const next = setLLMConfig({ baseUrl: e.target.value });
+                    setLlmCfg(next);
+                  }}
+                  placeholder="https://api.openai.com/v1"
+                  className="w-full text-sm border border-black/10 rounded-xl px-3 py-2.5 font-mono focus:outline-none focus:ring-2 focus:ring-black/20"
+                />
+                <p className="text-[10px] text-gray-400">OpenAI 兼容端点，如 DeepSeek: https://api.deepseek.com/v1</p>
+              </div>
+
+              {/* Model — 带检测按钮与下拉 */}
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-bold text-gray-600">模型名称</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={llmCfg.model}
+                    onChange={(e) => {
+                      const next = setLLMConfig({ model: e.target.value });
+                      setLlmCfg(next);
+                    }}
+                    placeholder="gpt-4o-mini"
+                    className="w-full text-sm border border-black/10 rounded-xl px-3 py-2.5 pr-10 font-mono focus:outline-none focus:ring-2 focus:ring-black/20"
+                  />
+                  <button
+                    type="button"
+                    title="检测可用模型"
+                    disabled={llmModelFetching || !llmCfg.apiKey || !llmCfg.baseUrl}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-black disabled:opacity-30 transition-colors"
+                    onClick={async () => {
+                      setLlmModelFetching(true);
+                      setLlmModels([]);
+                      try {
+                        const models = await fetchAvailableModels();
+                        setLlmModels(models);
+                        setLlmModelDropdownOpen(true);
+                      } catch {
+                        setLlmModels([]);
+                      }
+                      setLlmModelFetching(false);
+                    }}
+                  >
+                    <RefreshCw size={15} className={llmModelFetching ? 'animate-spin' : ''} />
+                  </button>
+                </div>
+                {/* 模型下拉列表 */}
+                {llmModelDropdownOpen && llmModels.length > 0 && (
+                  <>
+                    <button
+                      type="button"
+                      className="fixed inset-0 z-[1] cursor-default bg-transparent"
+                      aria-label="关闭"
+                      onClick={() => setLlmModelDropdownOpen(false)}
+                    />
+                    <div className="relative z-[2] mt-0.5 max-h-56 overflow-y-auto rounded-xl border border-black/10 bg-white shadow-lg">
+                      <p className="sticky top-0 bg-gray-50 px-3 py-1.5 text-[10px] font-bold text-gray-500 border-b border-black/5">
+                        检测到 {llmModels.length} 个可用模型
+                        {llmModels.some((m) => m.isThinking) && <span className="ml-1 text-amber-500">（🧠 = 推理模型，已自动抑制思维链）</span>}
+                      </p>
+                      {llmModels.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          className={`w-full text-left px-3 py-2 text-xs font-mono hover:bg-black/5 transition-colors flex items-center gap-1.5 ${
+                            m.id === llmCfg.model ? 'bg-emerald-50 text-emerald-700 font-bold'
+                              : m.isThinking ? 'text-gray-400' : 'text-gray-700'
+                          }`}
+                          onClick={() => {
+                            const next = setLLMConfig({ model: m.id });
+                            setLlmCfg(next);
+                            setLlmModelDropdownOpen(false);
+                          }}
+                        >
+                          <span className="truncate">{m.id}</span>
+                          {m.isThinking && <span className="shrink-0 text-amber-500 text-[10px]" title="推理模型，已自动禁用思维链">🧠</span>}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+                {llmModelDropdownOpen && llmModels.length === 0 && !llmModelFetching && (
+                  <p className="text-[10px] text-rose-500 px-1">未检测到可用模型，请检查 API Key 与 Base URL</p>
+                )}
+              </div>
+
+              {/* 测试连接 */}
+              <button
+                type="button"
+                disabled={llmTestStatus === 'testing' || !llmCfg.apiKey || !llmCfg.baseUrl}
+                className={`w-full py-2.5 rounded-xl text-sm font-bold transition-colors ${
+                  llmTestStatus === 'ok'
+                    ? 'bg-emerald-100 text-emerald-700'
+                    : llmTestStatus === 'fail'
+                      ? 'bg-rose-100 text-rose-700'
+                      : 'bg-black text-white hover:bg-gray-800 disabled:opacity-40'
+                }`}
+                onClick={async () => {
+                  setLlmTestStatus('testing');
+                  setLlmTestMsg('');
+                  try {
+                    const prev = llmCfg.enabled;
+                    setLLMConfig({ enabled: true });
+                    const reply = await llmChat(
+                      [{ role: 'user', content: '请用一句话扮演一位博士生导师打招呼。' }],
+                      { temperature: 0.7, maxTokens: 2048, source: 'test' },
+                    );
+                    if (!prev) {
+                      const next = setLLMConfig({ enabled: prev });
+                      setLlmCfg(next);
+                    }
+                    setLlmTestStatus('ok');
+                    setLlmTestMsg(reply);
+                    setLlmTokenStats(getTokenStats());
+                  } catch (err: any) {
+                    setLlmTestStatus('fail');
+                    setLlmTestMsg(err?.message?.slice(0, 120) || '连接失败');
+                    const next = getLLMConfig();
+                    setLlmCfg(next);
+                  }
+                }}
+              >
+                {llmTestStatus === 'testing' ? '测试中…' : '测试连接'}
+              </button>
+              {llmTestMsg && (
+                <p className={`text-xs leading-relaxed px-1 ${llmTestStatus === 'ok' ? 'text-emerald-600' : 'text-rose-600'}`}>
+                  {llmTestStatus === 'ok' ? '✓ ' : '✗ '}{llmTestMsg}
+                </p>
+              )}
+
+              <p className="text-[10px] text-gray-400 leading-relaxed">
+                配置仅保存在浏览器本地（localStorage），不会上传。关闭开关后将回退至内置随机文案池。
+              </p>
+              </>) : (<>
+              {/* ── Token 统计页 ── */}
+              {(() => {
+                const s = llmTokenStats;
+                const total = s.totalPrompt + s.totalCompletion;
+                const bySource: Record<string, { prompt: number; completion: number; count: number }> = {};
+                for (const r of s.records) {
+                  if (!bySource[r.source]) bySource[r.source] = { prompt: 0, completion: 0, count: 0 };
+                  bySource[r.source].prompt += r.promptTokens;
+                  bySource[r.source].completion += r.completionTokens;
+                  bySource[r.source].count += 1;
+                }
+                const sourceLabel: Record<TokenSource, string> = {
+                  advisorFeedback: '导师寄语',
+                  randomEvent: '随机事件',
+                  momentContent: '朋友圈',
+                  externalMoment: '他人动态',
+                  actionDesc: '活动描述',
+                  selfRegulation: '自我调节',
+                  interaction: '导师/同门互动',
+                  misconductLine: '学术不端叙事',
+                  experimentWeakLine: '实验氛围',
+                  paperReview: '审稿叙事',
+                  profileContent: '首页档案',
+                  test: '连接测试',
+                  other: '其他',
+                };
+                return (
+                  <div className="flex flex-col gap-4">
+                    {/* 总览卡片 */}
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-center">
+                        <p className="text-[9px] font-bold uppercase text-blue-600/70">输入 Token</p>
+                        <p className="text-lg font-bold font-mono text-blue-700">{s.totalPrompt.toLocaleString()}</p>
+                      </div>
+                      <div className="bg-violet-50 p-3 rounded-xl border border-violet-100 text-center">
+                        <p className="text-[9px] font-bold uppercase text-violet-600/70">输出 Token</p>
+                        <p className="text-lg font-bold font-mono text-violet-700">{s.totalCompletion.toLocaleString()}</p>
+                      </div>
+                      <div className="bg-gray-50 p-3 rounded-xl border border-black/5 text-center">
+                        <p className="text-[9px] font-bold uppercase text-gray-500">合计</p>
+                        <p className="text-lg font-bold font-mono text-black">{total.toLocaleString()}</p>
+                      </div>
+                    </div>
+
+                    <p className="text-[10px] text-gray-400">共 {s.records.length} 次调用</p>
+
+                    {/* 分项明细 */}
+                    {Object.keys(bySource).length > 0 ? (
+                      <div className="rounded-xl border border-black/5 overflow-hidden">
+                        <div className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-2 bg-gray-50 text-[9px] font-bold uppercase text-gray-500 border-b border-black/5">
+                          <span>来源</span><span className="text-right">输入</span><span className="text-right">输出</span><span className="text-right">次数</span>
+                        </div>
+                        {Object.entries(bySource).sort((a, b) => (b[1].prompt + b[1].completion) - (a[1].prompt + a[1].completion)).map(([src, d]) => (
+                          <div key={src} className="grid grid-cols-[1fr_auto_auto_auto] gap-x-3 px-3 py-2 text-xs border-b border-black/[0.03] last:border-0">
+                            <span className="font-bold text-gray-700">{sourceLabel[src as TokenSource] || src}</span>
+                            <span className="text-right font-mono text-blue-600">{d.prompt.toLocaleString()}</span>
+                            <span className="text-right font-mono text-violet-600">{d.completion.toLocaleString()}</span>
+                            <span className="text-right font-mono text-gray-500">{d.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-gray-400 text-center py-4">暂无调用记录</p>
+                    )}
+
+                    {/* 最近调用时间线 */}
+                    {s.records.length > 0 && (
+                      <div className="flex flex-col gap-1">
+                        <p className="text-[10px] font-bold text-gray-500">最近调用</p>
+                        <div className="max-h-36 overflow-y-auto rounded-xl border border-black/5 divide-y divide-black/[0.03]">
+                          {[...s.records].reverse().slice(0, 30).map((r, i) => (
+                            <div key={i} className="flex items-center gap-2 px-3 py-1.5 text-[10px]">
+                              <span className="font-bold text-gray-600 min-w-[4.5rem]">{sourceLabel[r.source] || r.source}</span>
+                              <span className="font-mono text-blue-500">{r.promptTokens}</span>
+                              <span className="text-gray-300">/</span>
+                              <span className="font-mono text-violet-500">{r.completionTokens}</span>
+                              <span className="ml-auto text-gray-400">{new Date(r.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* 操作 */}
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        className="flex-1 py-2 rounded-xl text-xs font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors flex items-center justify-center gap-1.5"
+                        onClick={() => setLlmTokenStats(getTokenStats())}
+                      >
+                        <RefreshCw size={12} /> 刷新
+                      </button>
+                      <button
+                        type="button"
+                        className="flex-1 py-2 rounded-xl text-xs font-bold bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors flex items-center justify-center gap-1.5"
+                        onClick={() => { clearTokenStats(); setLlmTokenStats(getTokenStats()); }}
+                      >
+                        <Trash2 size={12} /> 清空统计
+                      </button>
+                    </div>
+
+                    <p className="text-[10px] text-gray-400 leading-relaxed">
+                      Token 数据来自 API 响应中的 usage 字段，存储在浏览器本地。部分 API 可能不返回用量信息，此时不计入统计。
+                    </p>
+                  </div>
+                );
+              })()}
+              </>)}
             </motion.div>
           </div>
         )}

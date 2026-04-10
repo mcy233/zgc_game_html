@@ -18,6 +18,33 @@ export type ProfileHonorDef = {
 
 const H: ProfileHonorDef[] = [
   {
+    id: 'graduate_mythic',
+    priority: 1,
+    headlineTitle: '神话级出站·传说缔造者',
+    popupTitle: '称号解锁：神话级出站',
+    unlockBody:
+      '论文、引用、声望三位一体封顶毕业——你的履历已经可以直接投简历给诺奖委员会了（大雾）。此称号仅授予极少数把每个数值都点满的终极玩家。',
+    condition: (s) => s.milestone === '顺利毕业' && s.graduationHonor === 'MYTHIC',
+  },
+  {
+    id: 'graduate_legend',
+    priority: 2,
+    headlineTitle: '高光毕业·学术明星',
+    popupTitle: '称号解锁：高光毕业',
+    unlockBody:
+      '答辩委员会集体点头的速度堪比审稿人拒稿的速度。你的成果已经让导师在组会里自豪了整整一学期。',
+    condition: (s) => s.milestone === '顺利毕业' && s.graduationHonor === 'LEGEND',
+  },
+  {
+    id: 'graduate_star',
+    priority: 3,
+    headlineTitle: '优秀博士·前途可期',
+    popupTitle: '称号解锁：优秀博士',
+    unlockBody:
+      '超过大多数同届的硬指标毕业。博后、大厂研究院、高校教职 track，三叉路口你站在中间挑选方向的姿态相当从容。',
+    condition: (s) => s.milestone === '顺利毕业' && s.graduationHonor === 'STAR',
+  },
+  {
     id: 'graduate_phd',
     priority: 5,
     headlineTitle: '博士通关·存档已写入',
@@ -25,6 +52,15 @@ const H: ProfileHonorDef[] = [
     unlockBody:
       '你走到了「顺利毕业」这一结局节点。系统郑重宣布：学生证可以删了，焦虑可以打包备份，下一关地图请自行下载。此称号纪念你把培养方案从「进行中」熬成了「已完成」。',
     condition: (s) => s.milestone === '顺利毕业',
+  },
+  {
+    id: 'graduate_scrape',
+    priority: 6,
+    headlineTitle: '惊险过关·心脏很强',
+    popupTitle: '称号解锁：惊险过关',
+    unlockBody:
+      '差一点就要加入延毕大军，但你硬是在最后关头把论文和声望凑到了及格线。评委的眉头皱痕已经刻在你的毕业记忆里了。',
+    condition: (s) => s.milestone === '顺利毕业' && s.graduationHonor === 'SCRAPE',
   },
   {
     id: 'papers_three',
@@ -45,13 +81,22 @@ const H: ProfileHonorDef[] = [
     condition: (s) => s.year >= 3,
   },
   {
-    id: 'citations_25',
-    priority: 15,
-    headlineTitle: '引用量开始像那么回事',
-    popupTitle: '称号解锁：被引用两位数俱乐部',
+    id: 'citations_300',
+    priority: 13,
+    headlineTitle: '引用三百·学术能见度已上线',
+    popupTitle: '称号解锁：引用三位数后半段',
     unlockBody:
-      '总引用达到 25。别人搜相关工作时能搜到你，说明你的论文不再只是文件夹里的 PDF，而是数据库里会动的小数字。请继续保持，别飘，数据库也会抽风。',
-    condition: (s) => s.citations >= 25,
+      '总引用突破 300。你的论文开始在各种 survey 和 related work 里冒头，Google Scholar 页面终于不再寒酸。这种被动收入的感觉，比季度补助还爽。',
+    condition: (s) => s.citations >= 300,
+  },
+  {
+    id: 'citations_100',
+    priority: 15,
+    headlineTitle: '引用破百·不再是小透明',
+    popupTitle: '称号解锁：引用量三位数了',
+    unlockBody:
+      '总引用达到 100。你的论文终于从「自引 + 导师引」的自嗨模式毕业了，开始有陌生人在 cite 你。学术存在感初步建立，虽然可能有一半引用只是凑 related work 的。',
+    condition: (s) => s.citations >= 100,
   },
   {
     id: 'credits_done',
@@ -90,13 +135,13 @@ const H: ProfileHonorDef[] = [
     condition: (s) => s.reputation >= 72,
   },
   {
-    id: 'citations_8',
+    id: 'citations_30',
     priority: 25,
-    headlineTitle: '被引用破个位数纪念',
-    popupTitle: '称号解锁：引用不是个位数了',
+    headlineTitle: '引用数开始像那么回事',
+    popupTitle: '称号解锁：引用两位数俱乐部',
     unlockBody:
-      '总引用达到 8。个位数时代结束，可以谦虚地说「还有一点工作」而不心虚。下一步是和数据库延迟与自引误会继续搏斗。',
-    condition: (s) => s.citations >= 8,
+      '总引用达到 30。你的论文开始有人读了——至少 Google Scholar 这么告诉你。从「恒为零」到两位数，这一步比你想象的难。',
+    condition: (s) => s.citations >= 30,
   },
   {
     id: 'advisor_onboard',

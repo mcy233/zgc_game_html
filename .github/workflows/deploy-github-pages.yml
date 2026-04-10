@@ -37,7 +37,8 @@ jobs:
         env:
           # 与 vite.config 中 base 一致：必须是 /你的仓库名/
           VITE_BASE_PATH: /${{ github.event.repository.name }}/
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # 仓库 Secrets 名称请使用 API_KEY（若曾用旧名，请在 Settings 中新建并删除旧 Secret）
+          API_KEY: ${{ secrets.API_KEY }}
 
       - uses: actions/upload-pages-artifact@v3
         with:

@@ -44,7 +44,7 @@ export function bumpQuarterStat(arr: number[], quarter: number, delta: number): 
   return next;
 }
 
-const EXPERIMENT_LIT_WEAK_LINES = [
+export const EXPERIMENT_LIT_WEAK_LINES = [
   'Loss 曲线忽上忽下，你盯着 TensorBoard 发呆，完全不知道模型在学什么。',
   '实验日志里全是 NaN 与玄学 seed，你怀疑自己和数据总有一个在撒谎。',
   '对照组与实验组纠缠不清，你感觉自己像在炼丹而不是在做科研。',
