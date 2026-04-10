@@ -18,6 +18,8 @@ export default defineConfig(({mode}) => {
     plugins: [react(), tailwindcss()],
     define: {
       'process.env.API_KEY': JSON.stringify(env.API_KEY || process.env.API_KEY || ''),
+      'process.env.API_BASE_URL': JSON.stringify(env.API_BASE_URL || process.env.API_BASE_URL || ''),
+      'process.env.API_MODEL': JSON.stringify(env.API_MODEL || process.env.API_MODEL || ''),
     },
     resolve: {
       alias: {

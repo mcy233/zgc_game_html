@@ -9,6 +9,17 @@ const STORAGE_KEY = 'zgc_llm_config';
 const TOKEN_STATS_KEY = 'zgc_llm_token_stats';
 
 /* ================================================================== */
+/*  构建时注入的默认配置（来自 .env / GitHub Secrets）                     */
+/* ================================================================== */
+
+const BUILD_KEY = (typeof process !== 'undefined' && process.env?.API_KEY) || '';
+const BUILD_BASE_URL = (typeof process !== 'undefined' && process.env?.API_BASE_URL) || '';
+const BUILD_MODEL = (typeof process !== 'undefined' && process.env?.API_MODEL) || '';
+
+/** 仓库管理者是否在构建时预置了 API Key */
+export const hasBuildTimeKey = !!BUILD_KEY;
+
+/* ================================================================== */
 /*  配置                                                               */
 /* ================================================================== */
 
@@ -22,17 +33,22 @@ export interface LLMConfig {
 }
 
 const DEFAULT_CONFIG: LLMConfig = {
-  enabled: false,
-  apiKey: '',
-  baseUrl: 'https://api.openai.com/v1',
-  model: 'gpt-4o-mini',
+  enabled: hasBuildTimeKey,
+  apiKey: BUILD_KEY,
+  baseUrl: BUILD_BASE_URL || 'https://api.openai.com/v1',
+  model: BUILD_MODEL || 'gpt-4o-mini',
 };
 
 export function getLLMConfig(): LLMConfig {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return { ...DEFAULT_CONFIG };
-    return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
+    const saved = { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
+    if (hasBuildTimeKey && !saved.apiKey) {
+      saved.apiKey = BUILD_KEY;
+      saved.enabled = true;
+    }
+    return saved;
   } catch {
     return { ...DEFAULT_CONFIG };
   }

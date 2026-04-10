@@ -82,7 +82,7 @@ import {
 } from './services/narrativeService';
 import {
   getLLMConfig, setLLMConfig, isLLMReady, chatCompletion as llmChat,
-  fetchAvailableModels, getTokenStats, clearTokenStats,
+  fetchAvailableModels, getTokenStats, clearTokenStats, hasBuildTimeKey,
   type LLMConfig, type ModelInfo, type TokenStats, type TokenSource,
 } from './services/llmClient';
 import { buildStudentProfile, pickRandomUndergradUniversity } from './studentProfileContent';
@@ -3595,6 +3595,13 @@ export default function App() {
               <p className="text-xs text-gray-500 leading-relaxed">
                 开启后，所有活动描述、导师寄语、随机事件、互动文案、朋友圈、首页档案等均由大模型实时生成，永不重复。支持 OpenAI 兼容格式的 API。
               </p>
+              {hasBuildTimeKey && (
+                <div className="bg-emerald-50 border border-emerald-200/80 rounded-xl px-3 py-2">
+                  <p className="text-[11px] text-emerald-800 leading-relaxed">
+                    ✅ 本站已内置默认 API，开启开关即可直接使用。你也可以填写自己的 API Key 来覆盖默认配置。
+                  </p>
+                </div>
+              )}
 
               {/* 总开关 */}
               <label className="flex items-center justify-between gap-3 p-3 rounded-xl bg-gray-50 border border-black/5 cursor-pointer select-none">
@@ -3621,7 +3628,7 @@ export default function App() {
                       const next = setLLMConfig({ apiKey: e.target.value });
                       setLlmCfg(next);
                     }}
-                    placeholder="sk-..."
+                    placeholder={hasBuildTimeKey ? '已使用内置 API Key' : 'sk-...'}
                     className="w-full text-sm border border-black/10 rounded-xl px-3 py-2.5 pr-10 font-mono focus:outline-none focus:ring-2 focus:ring-black/20"
                   />
                   <button
@@ -3632,6 +3639,9 @@ export default function App() {
                     {llmKeyVisible ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
+                {hasBuildTimeKey && (
+                  <p className="text-[10px] text-gray-400">留空将自动使用站点内置 API Key</p>
+                )}
               </div>
 
               {/* Base URL */}
